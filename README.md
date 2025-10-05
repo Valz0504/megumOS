@@ -1,4 +1,4 @@
-![Credit: 朧月](mascot.jpg)
+![Credit: 朧月](megumi.jpg)
 
 # Template Dasar IF2130 Sistem Operasi - 2025/2026
 Template dasar untuk Tugas Besar IF2130 - Sistem Operasi 2025/2026
