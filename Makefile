@@ -18,34 +18,26 @@ LFLAGS        = -T $(SOURCE_FOLDER)/linker.ld -melf_i386
 
 
 run: all
-	@qemu-system-i386 -cdrom $(OUTPUT_FOLDER)/$(ISO_NAME).iso
+	@qemu-system-i386 -s -S -cdrom $(OUTPUT_FOLDER)/$(ISO_NAME).iso
 all: build
 build: iso
 clean:
-	rm -rf *.o $(OUTPUT_FOLDER)/*.iso $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/*.o
+	rm -rf *.o *.iso $(OUTPUT_FOLDER)/kernel
+	
 
 
 kernel:
-	@echo "Compiling and Linking C/Assembly Sources..."
-	# Assembly source
 	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/kernel-entrypoint.s -o $(OUTPUT_FOLDER)/kernel-entrypoint.o
-	
-	# CPU Component (Port I/O)
-	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/portio.c -o $(OUTPUT_FOLDER)/portio.o
-	
-	# Text Component (Framebuffer)
-	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/text/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
-	
-	# Standard Library Component (String) - Uncomment jika Anda punya src/stdlib/string.c
-	# @$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
-	
-	# Kernel and GDT
+	@$(ASM) $(AFLAGS) .kit/ch1/2\ -\ Interrupt/intsetup.s -o $(OUTPUT_FOLDER)/intsetup.o
+
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/kernel.c -o $(OUTPUT_FOLDER)/kernel.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/gdt.c -o $(OUTPUT_FOLDER)/gdt.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
 
 	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
 	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/portio.c -o $(OUTPUT_FOLDER)/portio.o
+	@$(CC) $(CFLAGS) .kit/ch1/2\ -\ Interrupt/idt.c -o $(OUTPUT_FOLDER)/idt.o
+	@$(CC) $(CFLAGS) .kit/ch1/2\ -\ Interrupt/interrupt.c -o $(OUTPUT_FOLDER)/interrupt.o
 
 	@$(LIN) $(LFLAGS) bin/*.o -o $(OUTPUT_FOLDER)/kernel
 	@echo Linking object files and generate elf32...
@@ -53,9 +45,9 @@ kernel:
 
 iso: kernel
 	@mkdir -p $(OUTPUT_FOLDER)/iso/boot/grub
-	@cp $(OUTPUT_FOLDER)/kernel 	 $(OUTPUT_FOLDER)/iso/boot/
-	@cp other/grub1 				 $(OUTPUT_FOLDER)/iso/boot/grub/
-	@cp $(SOURCE_FOLDER)/menu.lst 	 $(OUTPUT_FOLDER)/iso/boot/grub/
+	@cp $(OUTPUT_FOLDER)/kernel     $(OUTPUT_FOLDER)/iso/boot/
+	@cp other/grub1                 $(OUTPUT_FOLDER)/iso/boot/grub/
+	@cp $(SOURCE_FOLDER)/menu.lst   $(OUTPUT_FOLDER)/iso/boot/grub/
 	@genisoimage -R \
 		-b boot/grub/grub1 \
 		-no-emul-boot \
