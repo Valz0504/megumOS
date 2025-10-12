@@ -42,10 +42,13 @@ kernel:
 	# Kernel and GDT
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/kernel.c -o $(OUTPUT_FOLDER)/kernel.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/gdt.c -o $(OUTPUT_FOLDER)/gdt.o
-	
-	# Linking all object files
-	@$(LIN) $(LFLAGS) $(OUTPUT_FOLDER)/*.o -o $(OUTPUT_FOLDER)/kernel
-	@echo "Linking object files and generate elf32... Done."
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
+
+	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
+	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/portio.c -o $(OUTPUT_FOLDER)/portio.o
+
+	@$(LIN) $(LFLAGS) bin/*.o -o $(OUTPUT_FOLDER)/kernel
+	@echo Linking object files and generate elf32...
 	@rm -f *.o
 
 iso: kernel
