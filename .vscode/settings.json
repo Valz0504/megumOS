@@ -5,6 +5,7 @@
         "stdbool.h": "c",
         "interrupt.h": "c",
         "framebuffer.h": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "keyboard.h": "c"
     },
 }
