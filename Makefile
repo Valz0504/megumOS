@@ -1,3 +1,7 @@
+# ============================================================
+#   Open Source Kernel Project - Makefile
+# ============================================================
+
 # Compiler & linker
 ASM           = nasm
 LIN           = ld
@@ -12,50 +16,60 @@ ISO_NAME      = OS2025
 WARNING_CFLAG = -Wall -Wextra -Werror
 DEBUG_CFLAG   = -fshort-wchar -g
 STRIP_CFLAG   = -nostdlib -fno-stack-protector -nostartfiles -nodefaultlibs -ffreestanding
-CFLAGS        = $(DEBUG_CFLAG) $(WARNING_CFLAG) $(STRIP_CFLAG) -m32 -c -I$(SOURCE_FOLDER)
+CFLAGS        = $(DEBUG_CFLAG) $(WARNING_CFLAG) $(STRIP_CFLAG) -m32 -c -I$(SOURCE_FOLDER) -I$(SOURCE_FOLDER)/header
 AFLAGS        = -f elf32 -g -F dwarf
 LFLAGS        = -T $(SOURCE_FOLDER)/linker.ld -melf_i386
 
+# ============================================================
+#   Build Targets
+# ============================================================
 
 run: all
 	@qemu-system-i386 -cdrom $(OUTPUT_FOLDER)/$(ISO_NAME).iso
+
 all: build
+
 build: iso
+
 clean:
 	rm -rf *.o $(OUTPUT_FOLDER)/*.iso $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/*.o
 
+# ============================================================
+#   Compilation Rules
+# ============================================================
 
 kernel:
 	@echo "Compiling and Linking C/Assembly Sources..."
-	# Assembly source
+	@mkdir -p $(OUTPUT_FOLDER)
+
+	# Assembly sources
 	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/kernel-entrypoint.s -o $(OUTPUT_FOLDER)/kernel-entrypoint.o
-	
-	# CPU Component (Port I/O)
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/cpu/intsetup.s -o $(OUTPUT_FOLDER)/intsetup.o
+
+	# CPU Components
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/portio.c -o $(OUTPUT_FOLDER)/portio.o
-	
-	# Text Component (Framebuffer)
-	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/text/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
-	
-	# Standard Library Component (String) - Uncomment jika Anda punya src/stdlib/string.c
-	# @$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
-	
-	# Kernel and GDT
-	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/kernel.c -o $(OUTPUT_FOLDER)/kernel.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/gdt.c -o $(OUTPUT_FOLDER)/gdt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/interrupt.c -o $(OUTPUT_FOLDER)/interrupt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/idt.c -o $(OUTPUT_FOLDER)/idt.o
+
+	# Text Components
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/text/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
+
+	# Standard Library
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
 
-	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
-	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/portio.c -o $(OUTPUT_FOLDER)/portio.o
+	# Kernel main
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/kernel.c -o $(OUTPUT_FOLDER)/kernel.o
 
-	@$(LIN) $(LFLAGS) bin/*.o -o $(OUTPUT_FOLDER)/kernel
-	@echo Linking object files and generate elf32...
-	@rm -f *.o
+	# Link all object files
+	@$(LIN) $(LFLAGS) $(OUTPUT_FOLDER)/*.o -o $(OUTPUT_FOLDER)/kernel
+	@echo "Linking object files and generating ELF32 kernel..."
 
 iso: kernel
 	@mkdir -p $(OUTPUT_FOLDER)/iso/boot/grub
-	@cp $(OUTPUT_FOLDER)/kernel 	 $(OUTPUT_FOLDER)/iso/boot/
-	@cp other/grub1 				 $(OUTPUT_FOLDER)/iso/boot/grub/
-	@cp $(SOURCE_FOLDER)/menu.lst 	 $(OUTPUT_FOLDER)/iso/boot/grub/
+	@cp $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/iso/boot/
+	@cp other/grub1 $(OUTPUT_FOLDER)/iso/boot/grub/
+	@cp $(SOURCE_FOLDER)/menu.lst $(OUTPUT_FOLDER)/iso/boot/grub/
 	@genisoimage -R \
 		-b boot/grub/grub1 \
 		-no-emul-boot \

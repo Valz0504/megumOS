@@ -1,6 +1,8 @@
 {
     "debug.onTaskErrors": "debugAnyway",
     "files.associations": {
-        "string.h": "c"
+        "string.h": "c",
+        "framebuffer.h": "c",
+        "compare": "c"
     },
 }

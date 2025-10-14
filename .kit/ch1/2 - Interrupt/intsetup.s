@@ -33,7 +33,10 @@ call_generic_handler:
     pop eax
 
     ; Call the C function
+    push esp          ; kirim pointer ke struct InterruptFrame (alamat stack saat ini)
     call main_interrupt_handler
+    add esp, 4        ; bersihkan argumen (pointer)
+
 
     ; Restore general-purpose & index register
     popad
@@ -146,3 +149,7 @@ isr_stub_table:
     dd interrupt_handler_%+i
     %assign i i+1 
     %endrep
+
+load_idt:
+    lidt [esp + 4]    ; muat IDTR dari argumen pertama (pointer di stack)
+    ret
