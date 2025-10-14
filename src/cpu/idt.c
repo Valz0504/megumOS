@@ -1,74 +1,52 @@
-#include <stdint.h>
-#include "header/stdlib/string.h"
 #include "header/cpu/idt.h"
 #include "header/cpu/gdt.h"
-#include "header/text/framebuffer.h"
-#include "header/cpu/interrupt.h"
 
-// ---------------------------------------------------------------------------
-//  External symbols
-// ---------------------------------------------------------------------------
+// IDT Table
+struct IDTGate interrupt_descriptor_table[IDT_MAX_ENTRY_COUNT];
 
-// ISR stub table defined in Assembly (see isr.asm or interrupt.asm)
-extern void *isr_stub_table[ISR_STUB_TABLE_LIMIT];
-
-// lidt loader (could also be inline asm here)
-extern void load_idt(struct IDTR *idtr);
-
-// ---------------------------------------------------------------------------
-//  Global IDT and IDTR definition
-// ---------------------------------------------------------------------------
-
-struct IDTGate idt[IDT_MAX_ENTRY_COUNT];
-struct IDTR _idt_idtr;
-
-// ---------------------------------------------------------------------------
-//  Helper: Set one entry in IDT
-// ---------------------------------------------------------------------------
+// IDTR
+struct IDTR _idt_idtr = {
+    .size = sizeof(interrupt_descriptor_table) - 1,
+    .address = (uint32_t) &interrupt_descriptor_table
+};
 
 void set_interrupt_gate(uint8_t int_vector, void *handler_address, uint16_t gdt_seg_selector, uint8_t privilege) {
-    uint32_t handler = (uint32_t) handler_address;
-    struct IDTGate *gate = &idt[int_vector];
-
-    gate->offset_low       = handler & 0xFFFF;
-    gate->segment_selector = gdt_seg_selector;
-    gate->zero             = 0;
-    gate->offset_high      = (handler >> 16) & 0xFFFF;
-
-    /*
-        Type Attribute Layout (8 bits):
-        Bit | Name        | Value
-        ----|--------------|------
-        7   | Present (P)  | 1
-        6-5 | DPL          | privilege
-        4   | 0            | 0
-        3-0 | Gate Type    | 0xE (32-bit interrupt gate)
-
-        So, 0x8E = 10001110b (P=1, DPL=00, Type=1110)
-    */
-    gate->type_attr = 0x80 | (privilege << 5) | 0x0E;
+    struct IDTGate *idt_int_gate = &interrupt_descriptor_table[int_vector];
+    
+    // Set offset low (lower 16 bits)
+    idt_int_gate->offset_low = (uint32_t) handler_address & 0xFFFF;
+    
+    // Set offset high (upper 16 bits)
+    idt_int_gate->offset_high = ((uint32_t) handler_address >> 16) & 0xFFFF;
+    
+    // Set segment selector
+    idt_int_gate->segment = gdt_seg_selector;
+    
+    // Set reserved bits
+    idt_int_gate->_reserved = 0;
+    idt_int_gate->_r_bit_1 = INTERRUPT_GATE_R_BIT_1;
+    idt_int_gate->_r_bit_2 = INTERRUPT_GATE_R_BIT_2;
+    idt_int_gate->_r_bit_3 = INTERRUPT_GATE_R_BIT_3;
+    
+    // Set gate as 32-bit
+    idt_int_gate->gate_32 = 1;
+    
+    // Set privilege level (0 for kernel, 3 for user)
+    idt_int_gate->privilege = privilege;
+    
+    // Set present bit (must be 1 for valid descriptor)
+    idt_int_gate->valid_bit = 1;
 }
 
-// ---------------------------------------------------------------------------
-//  Initialize IDT and Load to CPU
-// ---------------------------------------------------------------------------
-
 void initialize_idt(void) {
-    framebuffer_write(0, 4, 'A', 0xA, 0); // debug marker
-
-    // Fill first 64 interrupt vectors with corresponding ISR stubs
-    for (int i = 0; i < ISR_STUB_TABLE_LIMIT; i++) {
+    // Set all IDT gates using isr_stub_table
+    for (uint8_t i = 0; i < ISR_STUB_TABLE_LIMIT; i++) {
         set_interrupt_gate(i, isr_stub_table[i], GDT_KERNEL_CODE_SEGMENT_SELECTOR, 0);
     }
-
-    framebuffer_write(0, 5, 'B', 0xA, 0); // debug marker
-
-    // Setup IDTR structure
-    _idt_idtr.base = (uint32_t) &idt;
-    _idt_idtr.limit = (sizeof(struct IDTGate) * IDT_MAX_ENTRY_COUNT) - 1;
-
-    // Load IDT into CPU
-    __asm__ volatile("lidt (%0)" : : "r"(&_idt_idtr));
-
-    framebuffer_write(0, 6, 'C', 0xA, 0); // debug marker
+    
+    // Load IDT using lidt instruction
+    __asm__ volatile("lidt %0" : : "m"(_idt_idtr));
+    
+    // Enable interrupt flag
+    __asm__ volatile("sti");
 }
