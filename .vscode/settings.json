@@ -4,6 +4,7 @@
         "string.h": "c",
         "stdbool.h": "c",
         "interrupt.h": "c",
-        "framebuffer.h": "c"
+        "framebuffer.h": "c",
+        "stdint.h": "c"
     },
 }

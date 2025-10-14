@@ -28,16 +28,16 @@ clean:
 
 kernel:
 	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/kernel-entrypoint.s -o $(OUTPUT_FOLDER)/kernel-entrypoint.o
-	@$(ASM) $(AFLAGS) .kit/ch1/2\ -\ Interrupt/intsetup.s -o $(OUTPUT_FOLDER)/intsetup.o
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/cpu/intsetup.s -o $(OUTPUT_FOLDER)/intsetup.o
 
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/kernel.c -o $(OUTPUT_FOLDER)/kernel.o
-	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/gdt.c -o $(OUTPUT_FOLDER)/gdt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/gdt.c -o $(OUTPUT_FOLDER)/gdt.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
 
-	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
-	@$(CC) $(CFLAGS) .kit/ch1/1\ -\ Framebuffer/portio.c -o $(OUTPUT_FOLDER)/portio.o
-	@$(CC) $(CFLAGS) .kit/ch1/2\ -\ Interrupt/idt.c -o $(OUTPUT_FOLDER)/idt.o
-	@$(CC) $(CFLAGS) .kit/ch1/2\ -\ Interrupt/interrupt.c -o $(OUTPUT_FOLDER)/interrupt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/text/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/portio.c -o $(OUTPUT_FOLDER)/portio.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/idt.c -o $(OUTPUT_FOLDER)/idt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/interrupt.c -o $(OUTPUT_FOLDER)/interrupt.o
 
 	@$(LIN) $(LFLAGS) bin/*.o -o $(OUTPUT_FOLDER)/kernel
 	@echo Linking object files and generate elf32...

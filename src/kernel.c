@@ -3,8 +3,8 @@
 #include "header/cpu/gdt.h"
 #include "header/kernel-entrypoint.h"
 #include "header/text/framebuffer.h"
-#include "../.kit/ch1/2 - Interrupt/idt.h"
-#include "../.kit/ch1/2 - Interrupt/interrupt.h"
+#include "header/cpu/idt.h"
+#include "header/cpu/interrupt.h"
 
 // void kernel_setup(void) {
 //     uint32_t a;
