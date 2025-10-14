@@ -2,8 +2,16 @@
     "debug.onTaskErrors": "debugAnyway",
     "files.associations": {
         "string.h": "c",
+<<<<<<< HEAD
         "framebuffer.h": "c",
         "compare": "c",
         "portio.h": "c"
+=======
+        "stdbool.h": "c",
+        "interrupt.h": "c",
+        "framebuffer.h": "c",
+        "stdint.h": "c",
+        "keyboard.h": "c"
+>>>>>>> origin/feat/ch1
     },
 }

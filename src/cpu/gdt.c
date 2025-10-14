@@ -1,4 +1,4 @@
-#include "header/cpu/gdt.h"
+#include "../header/cpu/gdt.h"
 
 /**
  * global_descriptor_table, predefined GDT.

@@ -25,20 +25,26 @@ LFLAGS        = -T $(SOURCE_FOLDER)/linker.ld -melf_i386
 # ============================================================
 
 run: all
+<<<<<<< HEAD
 	@qemu-system-i386 -cdrom $(OUTPUT_FOLDER)/$(ISO_NAME).iso
 
+=======
+	@qemu-system-i386 -s -S -cdrom $(OUTPUT_FOLDER)/$(ISO_NAME).iso
+>>>>>>> origin/feat/ch1
 all: build
 
 build: iso
 
 clean:
-	rm -rf *.o $(OUTPUT_FOLDER)/*.iso $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/*.o
+	rm -rf *.o *.iso $(OUTPUT_FOLDER)/kernel
+	
 
 # ============================================================
 #   Compilation Rules
 # ============================================================
 
 kernel:
+<<<<<<< HEAD
 	@echo "Compiling and Linking C/Assembly Sources..."
 	@mkdir -p $(OUTPUT_FOLDER)
 
@@ -63,6 +69,20 @@ kernel:
 
 	# Kernel main
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/kernel.c -o $(OUTPUT_FOLDER)/kernel.o
+=======
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/kernel-entrypoint.s -o $(OUTPUT_FOLDER)/kernel-entrypoint.o
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/cpu/intsetup.s -o $(OUTPUT_FOLDER)/intsetup.o
+
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/kernel.c -o $(OUTPUT_FOLDER)/kernel.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/gdt.c -o $(OUTPUT_FOLDER)/gdt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
+
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/text/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/portio.c -o $(OUTPUT_FOLDER)/portio.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/idt.c -o $(OUTPUT_FOLDER)/idt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/interrupt.c -o $(OUTPUT_FOLDER)/interrupt.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/driver/keyboard.c -o $(OUTPUT_FOLDER)/keyboard.o
+>>>>>>> origin/feat/ch1
 
 	# Link all object files
 	@$(LIN) $(LFLAGS) $(OUTPUT_FOLDER)/*.o -o $(OUTPUT_FOLDER)/kernel
@@ -70,9 +90,15 @@ kernel:
 
 iso: kernel
 	@mkdir -p $(OUTPUT_FOLDER)/iso/boot/grub
+<<<<<<< HEAD
 	@cp $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/iso/boot/
 	@cp other/grub1 $(OUTPUT_FOLDER)/iso/boot/grub/
 	@cp $(SOURCE_FOLDER)/menu.lst $(OUTPUT_FOLDER)/iso/boot/grub/
+=======
+	@cp $(OUTPUT_FOLDER)/kernel     $(OUTPUT_FOLDER)/iso/boot/
+	@cp other/grub1                 $(OUTPUT_FOLDER)/iso/boot/grub/
+	@cp $(SOURCE_FOLDER)/menu.lst   $(OUTPUT_FOLDER)/iso/boot/grub/
+>>>>>>> origin/feat/ch1
 	@genisoimage -R \
 		-b boot/grub/grub1 \
 		-no-emul-boot \
