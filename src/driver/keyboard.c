@@ -5,7 +5,8 @@
 static struct KeyboardDriverState keyboard_state = {
   .read_extended_mode = false,
   .keyboard_input_on = false,
-  .keyboard_buffer = 0
+  .keyboard_buffer = 0,
+  .shift_pressed = false
 };
 
 const char keyboard_scancode_1_to_ascii_map[256] = {
@@ -32,7 +33,18 @@ void keyboard_isr(void) {
     uint8_t scancode = in(KEYBOARD_DATA_PORT);
     // TODO : Implement scancode processing
     if (keyboard_state.keyboard_input_on) {
-      keyboard_state.keyboard_buffer = keyboard_scancode_1_to_ascii_map[scancode];
+      if (scancode == 0x2A || scancode == 0x36) {
+            keyboard_state.shift_pressed = true;
+        }  else if (scancode == 0xAA || scancode == 0xB6) {
+            keyboard_state.shift_pressed = false;
+        }  else if (scancode < 0x80) {
+            char c = keyboard_scancode_1_to_ascii_map[scancode];
+            if (keyboard_state.shift_pressed && c >= 'a' && c <= 'z') {
+                c -= 32;
+            }
+
+            keyboard_state.keyboard_buffer = c;
+          }
     }
     pic_ack(IRQ_KEYBOARD);
 }

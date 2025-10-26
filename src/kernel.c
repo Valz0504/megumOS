@@ -43,21 +43,41 @@ void kernel_setup(void) {
 
     int row = 0, col = 0;
     keyboard_state_activate();
+
     while (true) {
         char c;
         get_keyboard_buffer(&c);
-        if (c) {
-            framebuffer_write(row, col, c, 0xF, 0);
-            if (col >= 80) {
-                ++row;
-                col = 0;
-            } else {
-                ++col;
+        if (!c) continue; 
+
+        if (c == '\b') {  
+            if (col > 0) {
+                col--;
+                framebuffer_write(row, col, ' ', 0xF, 0);
+                framebuffer_set_cursor(row, col);
+            } else if (row > 0) {
+                row--;
+                col = 79;
+                framebuffer_write(row, col, ' ', 0xF, 0);
+                framebuffer_set_cursor(row, col);
             }
-           framebuffer_set_cursor(row, col);
+        } 
+        else if (c == '\n') {
+            row++;
+            col = 0;
+            framebuffer_set_cursor(row, col);
+        } 
+        else {
+            framebuffer_write(row, col, c, 0xF, 0);
+            col++;
+            if (col >= 80) {
+                col = 0;
+                row++;
+            }
+            framebuffer_set_cursor(row, col);
         }
     }
 }
+
 
 // void kernel_setup(void) {
 //     load_gdt(&_gdt_gdtr);
