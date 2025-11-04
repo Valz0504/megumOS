@@ -1,14 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "header/filesystem/ext2.h"
 #include "header/driver/disk.h"
-#include "header/stdlib/string.h"
 
 // Global variable
 uint8_t *image_storage;
 uint8_t *file_buffer;
+uint8_t *read_buffer;
+
+#define TRUE 1
+#define FALSE 0
 
 void read_blocks(void *ptr, uint32_t logical_block_address, uint8_t block_count) {
     for (int i = 0; i < block_count; i++) {
@@ -39,6 +43,7 @@ int main(int argc, char *argv[]) {
     // Read storage into memory, requiring 4 MB memory
     image_storage = malloc(4*1024*1024);
     file_buffer   = malloc(4*1024*1024);
+    read_buffer   = malloc(4*1024*1024);
     FILE *fptr    = fopen(argv[3], "r");
     fread(image_storage, 4*1024*1024, 1, fptr);
     fclose(fptr);
@@ -61,6 +66,7 @@ int main(int argc, char *argv[]) {
     // EXT2 operations
     initialize_filesystem_ext2();
     char *name = argv[1];
+    int filename_length = strlen(name);
     struct EXT2DriverRequest request;
     struct EXT2DriverRequest reqread;
     printf("Filename       : %s\n", name);
@@ -96,7 +102,7 @@ int main(int argc, char *argv[]) {
     }
 
     retcode = write(&request);
-    if (retcode == 1 && is_replace)
+    if (retcode == 1)
     {
         retcode = delete (request);
         retcode = write(&request);

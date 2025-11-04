@@ -58,6 +58,9 @@ kernel:
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/driver/keyboard.c -o $(OUTPUT_FOLDER)/keyboard.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/driver/disk.c -o $(OUTPUT_FOLDER)/disk.o
 
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/memory/paging.c -o $(OUTPUT_FOLDER)/paging.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/filesystem/ext2.c -o $(OUTPUT_FOLDER)/ext2.o
+
 	# Link all object files
 	@$(LIN) $(LFLAGS) $(OUTPUT_FOLDER)/*.o -o $(OUTPUT_FOLDER)/kernel
 	@echo "Linking object files and generating ELF32 kernel..."
@@ -78,3 +81,23 @@ iso: kernel
 		-o $(OUTPUT_FOLDER)/$(ISO_NAME).iso \
 		$(OUTPUT_FOLDER)/iso
 	@rm -r $(OUTPUT_FOLDER)/iso/
+
+inserter:
+	@$(CC) -Wno-builtin-declaration-mismatch -g -I$(SOURCE_FOLDER) \
+		$(SOURCE_FOLDER)/stdlib/string.c \
+		$(SOURCE_FOLDER)/filesystem/ext2.c \
+		$(SOURCE_FOLDER)/external/external-inserter.c \
+		-o $(OUTPUT_FOLDER)/inserter
+
+user-shell:
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0.s -o crt0.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/user-shell.c -o user-shell.o
+	@$(LIN) -T $(SOURCE_FOLDER)/user-linker.ld -melf_i386 --oformat=binary \
+		crt0.o user-shell.o -o $(OUTPUT_FOLDER)/shell
+	@echo Linking object shell object files and generate flat binary...
+	@size --target=binary $(OUTPUT_FOLDER)/shell
+	@rm -f *.o
+
+insert-shell: inserter user-shell
+	@echo Inserting shell into root directory...
+	@cd $(OUTPUT_FOLDER); ./inserter shell 1 $(DISK_NAME).bin
