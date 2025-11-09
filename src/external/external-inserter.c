@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
 
 #include "header/filesystem/ext2.h"
 #include "header/driver/disk.h"
+#include "header/stdlib/string.h"
 
 // Global variable
 uint8_t *image_storage;

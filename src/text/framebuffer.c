@@ -19,7 +19,7 @@ void framebuffer_write(uint8_t row, uint8_t col, char c, uint8_t fg, uint8_t bg)
     // TODO : Implement
     uint16_t attrib = (bg << 4) | (fg & 0x0F);
     volatile uint16_t * where;
-    where = (volatile uint16_t *)0xB8000 + (row * 80 + col);
+    where = (volatile uint16_t *)FRAMEBUFFER_MEMORY_OFFSET + (row * 80 + col);
     *where = c | (attrib << 8);
 }
 

@@ -9,102 +9,100 @@
 struct GlobalDescriptorTable global_descriptor_table = {
     .table = {
         {
-            // Null Descriptor - All zeros
+            // Null Descriptor
             .segment_low = 0,
             .base_low = 0,
             .base_mid = 0,
             .type_bit = 0,
             .non_system = 0,
-            .descriptor_privilege_level = 0,
-            .segment_present = 0,
-            .segment_limit_high = 0,
+            .privilege = 0,
+            .valid_bit = 0,
+            .segment_high = 0,
             .available = 0,
             .long_mode = 0,
-            .default_operation_size = 0,
+            .opr_32_bit = 0,
             .granularity = 0,
             .base_high = 0
         },
         {
-            // Kernel Code Descriptor
-            .segment_low = 0xFFFF,          // Limit 0xFFFF (first 16 bits)
-            .base_low = 0,                  // Base 0x00000000 (first 16 bits)
-            .base_mid = 0,                  // Base (next 8 bits)
-            .type_bit = 0xA,                // Code: Execute/Read
-            .non_system = 1,                // Code/Data segment
-            .descriptor_privilege_level = 0, // Ring 0 (kernel)
-            .segment_present = 1,           // Present
-            .segment_limit_high = 0xF,      // Limit (last 4 bits)
-            .available = 0,                 // Available for system use
-            .long_mode = 0,                 // 32-bit mode (not 64-bit)
-            .default_operation_size = 1,    // 32-bit protected mode
-            .granularity = 1,               // 4KB granularity
-            .base_high = 0                  // Base (last 8 bits)
-        },
-        {
-            // Kernel Data Descriptor
-            .segment_low = 0xFFFF,          // Limit 0xFFFF (first 16 bits)
-            .base_low = 0,                  // Base 0x00000000 (first 16 bits)
-            .base_mid = 0,                  // Base (next 8 bits)
-            .type_bit = 0x2,                // Data: Read/Write
-            .non_system = 1,                // Code/Data segment
-            .descriptor_privilege_level = 0, // Ring 0 (kernel)
-            .segment_present = 1,           // Present
-            .segment_limit_high = 0xF,      // Limit (last 4 bits)
-            .available = 0,                 // Available for system use
-            .long_mode = 0,                 // 32-bit mode (not 64-bit)
-            .default_operation_size = 1,    // 32-bit protected mode
-            .granularity = 1,               // 4KB granularity
-            .base_high = 0                  // Base (last 8 bits)
-        },
-        {
-            // User Code Descriptor
-            .segment_low = 0xFFFF,          // Limit 0xFFFF (first 16 bits)
-            .base_low = 0,                  // Base 0x00000000 (first 16 bits)
-            .base_mid = 0,                  // Base (next 8 bits)
-            .type_bit = 0xA,                // Code: Execute/Read
-            .non_system = 1,                // Code/Data segment
-            .descriptor_privilege_level = 3, // Ring 3 (user)
-            .segment_present = 1,           // Present
-            .segment_limit_high = 0xF,      // Limit (last 4 bits)
-            .available = 0,                 // Available for system use
-            .long_mode = 0,                 // 32-bit mode (not 64-bit)
-            .default_operation_size = 1,    // 32-bit protected mode
-            .granularity = 1,               // 4KB granularity
-            .base_high = 0                  // Base (last 8 bits)
-        },
-        {
-            // User Data Descriptor
-            .segment_low = 0xFFFF,          // Limit 0xFFFF (first 16 bits)
-            .base_low = 0,                  // Base 0x00000000 (first 16 bits)
-            .base_mid = 0,                  // Base (next 8 bits)
-            .type_bit = 0x2,                // Data: Read/Write
-            .non_system = 1,                // Code/Data segment
-            .descriptor_privilege_level = 3, // Ring 3 (user)
-            .segment_present = 1,           // Present
-            .segment_limit_high = 0xF,      // Limit (last 4 bits)
-            .available = 0,                 // Available for system use
-            .long_mode = 0,                 // 32-bit mode (not 64-bit)
-            .default_operation_size = 1,    // 32-bit protected mode
-            .granularity = 1,               // 4KB granularity
-            .base_high = 0                  // Base (last 8 bits)
-        },
-        {
-            // TSS Descriptor (Task State Segment)
-            .segment_low = sizeof(struct TSSEntry),
+            // Kernel Code Segment
+            .segment_low = 0xFFFF,
             .base_low = 0,
             .base_mid = 0,
-            .type_bit = 0x9,                // TSS Available
-            .non_system = 0,                // System segment
-            .descriptor_privilege_level = 0, // Ring 0
-            .segment_present = 1,           // Present
-            .segment_limit_high = (sizeof(struct TSSEntry) & (0xF << 16)) >> 16,
-            .available = 0,
-            .long_mode = 0,
-            .default_operation_size = 1,    // 32-bit TSS
-            .granularity = 0,               // Byte granularity for TSS
+            .type_bit = 0xA,
+            .non_system = 1u,
+            .privilege = 0u,
+            .valid_bit = 1u,
+            .segment_high = 0xF,
+            .available = 0u,
+            .long_mode = 0u,
+            .opr_32_bit = 1u,
+            .granularity = 1u,
             .base_high = 0
         },
-        {0} // Null terminator
+        {
+            // Kernel Data Segment
+            .segment_low = 0xFFFF,
+            .base_low = 0,
+            .base_mid = 0,
+            .type_bit = 0x2,
+            .non_system = 1u,
+            .privilege = 0u,
+            .valid_bit = 1u,
+            .segment_high = 0xF,
+            .available = 0u,
+            .long_mode = 0u,
+            .opr_32_bit = 1u,
+            .granularity = 1u,
+            .base_high = 0
+        },
+        {
+            // User Code Segment
+            .segment_low = 0xFFFF,
+            .base_low = 0,
+            .base_mid = 0,
+            .type_bit = 0xA,
+            .non_system = 1u,
+            .privilege = 3u,
+            .valid_bit = 1u,
+            .segment_high = 0xF,
+            .available = 0u,
+            .long_mode = 0u,
+            .opr_32_bit = 1u,
+            .granularity = 1u,
+            .base_high = 0
+        },
+        {
+            // User Data Segment
+            .segment_low = 0xFFFF,
+            .base_low = 0,
+            .base_mid = 0,
+            .type_bit = 0x2,
+            .non_system = 1u,
+            .privilege = 3u,
+            .valid_bit = 1u,
+            .segment_high = 0xF,
+            .available = 0u,
+            .long_mode = 0u,
+            .opr_32_bit = 1u,
+            .granularity = 1u,
+            .base_high = 0
+        },
+        {
+            .segment_high      = (sizeof(struct TSSEntry) & (0xF << 16)) >> 16,
+            .segment_low       = sizeof(struct TSSEntry),
+            .base_high         = 0,
+            .base_mid          = 0,
+            .base_low          = 0,
+            .non_system        = 0,    // S bit
+            .type_bit          = 0x9,
+            .privilege         = 0,    // DPL
+            .valid_bit         = 1,    // P bit
+            .opr_32_bit        = 1,    // D/B bit
+            .long_mode         = 0,    // L bit
+            .granularity       = 0,    // G bit
+        },
+        {0}
     }
 };
 
