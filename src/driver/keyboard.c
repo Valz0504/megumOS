@@ -1,11 +1,12 @@
 #include "../header/driver/keyboard.h"
 #include "../header/cpu/portio.h"
+#include "../header/text/framebuffer.h"
 #include "../header/stdlib/string.h"
 
 static struct KeyboardDriverState keyboard_state = {
   .read_extended_mode = false,
   .keyboard_input_on = false,
-  .keyboard_buffer = 0,
+  .keyboard_buffer = '\0',
   .shift_pressed = false
 };
 
@@ -30,22 +31,24 @@ const char keyboard_scancode_1_to_ascii_map[256] = {
 };
 
 void keyboard_isr(void) {
-    uint8_t scancode = in(KEYBOARD_DATA_PORT);
-    // TODO : Implement scancode processing
-    if (keyboard_state.keyboard_input_on) {
-      if (scancode == 0x2A || scancode == 0x36) {
-            keyboard_state.shift_pressed = true;
-        }  else if (scancode == 0xAA || scancode == 0xB6) {
-            keyboard_state.shift_pressed = false;
-        }  else if (scancode < 0x80) {
-            char c = keyboard_scancode_1_to_ascii_map[scancode];
-            if (keyboard_state.shift_pressed && c >= 'a' && c <= 'z') {
-                c -= 32;
-            }
-
-            keyboard_state.keyboard_buffer = c;
-          }
+    
+    if (!keyboard_state.keyboard_input_on) {
+      pic_ack(IRQ_KEYBOARD);
+      return;
     }
+    
+    uint8_t scancode = in(KEYBOARD_DATA_PORT);
+    
+    if (scancode >= FRAMEBUFFER_WIDTH) {
+      pic_ack(IRQ_KEYBOARD);
+      return;
+    }
+
+    char ascii = keyboard_scancode_1_to_ascii_map[scancode];
+    if (ascii != 0) {  // Only store valid characters
+        keyboard_state.keyboard_buffer = ascii;
+    }
+
     pic_ack(IRQ_KEYBOARD);
 }
 
@@ -58,7 +61,13 @@ void keyboard_state_deactivate(void) {
 }
 
 void get_keyboard_buffer(char *buf) {
-  *buf = keyboard_state.keyboard_buffer;
-  keyboard_state.keyboard_buffer = 0; 
+    // Blocking wait until keyboard buffer has data
+    while (keyboard_state.keyboard_buffer == '\0') {
+        // Busy wait for keyboard interrupt
+        // Interrupt will fill keyboard_buffer
+    }
+    
+    *buf = keyboard_state.keyboard_buffer;
+    keyboard_state.keyboard_buffer = '\0';
 }
 

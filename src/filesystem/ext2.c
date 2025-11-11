@@ -488,6 +488,9 @@ int8_t read_directory(struct EXT2DriverRequest *request) {
 }
 
 int8_t read(struct EXT2DriverRequest request) {
+    static struct BlockBuffer dir_buf;
+    static struct BlockBuffer data_block;
+    
     if (request.parent_inode == 0 || request.parent_inode > superblock.s_inodes_count) {
         return 4;
     }
@@ -499,7 +502,6 @@ int8_t read(struct EXT2DriverRequest request) {
         return 4;
     }
     
-    struct BlockBuffer dir_buf;
     read_blocks(&dir_buf, parent_node.i_block[0], 1);
     
     uint32_t offset = 0;
@@ -534,7 +536,6 @@ int8_t read(struct EXT2DriverRequest request) {
             uint32_t bytes_read = 0;
             
             for (uint32_t i = 0; i < file_node.i_blocks && i < 12; i++) {
-                struct BlockBuffer data_block;
                 read_blocks(&data_block, file_node.i_block[i], 1);
                 
                 uint32_t bytes_to_copy = (file_node.i_size - bytes_read > BLOCK_SIZE) ? 

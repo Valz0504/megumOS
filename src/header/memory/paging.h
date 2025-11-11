@@ -14,6 +14,9 @@
 // Maximum usable page frame. Default count: 128 / 4 = 32 page frame
 #define PAGE_FRAME_MAX_COUNT ((SYSTEM_MEMORY_MB << 20) / PAGE_FRAME_SIZE)
 
+#define KERNEL_VIRTUAL_ADDRESS_BASE 0xC0000000
+#define PAGING_DIRECTORY_TABLE_MAX_COUNT 32
+
 // Operating system page directory, using page size PAGE_FRAME_SIZE (4 MiB)
 extern struct PageDirectory _paging_kernel_page_directory;
 
@@ -81,7 +84,7 @@ struct PageDirectoryEntry {
 struct PageDirectory {
     // TODO : Implement
     struct PageDirectoryEntry table[PAGE_ENTRY_COUNT];
-} __attribute__((packed));
+} __attribute__((aligned(0x1000)));
 
 /**
  * Containing page manager states.
