@@ -46,27 +46,62 @@ void enable_cursor(void) {
     out(CURSOR_PORT_DATA, (in(CURSOR_PORT_DATA) & 0xE0) | 0xF);
 }
 
+void puts(char* str, uint32_t len, uint8_t color) {
+    for (uint32_t i = 0; i < len; i++) {
+        char c = str[i];
+        if (c == '\n') {
+            cursor_row++;
+            cursor_col = 0;
+        } else if (c == '\b') {
+            if (cursor_col > 0) {
+                cursor_col--;
+                framebuffer_write(cursor_row, cursor_col, ' ', 0x0F, 0x00);
+            }
+        } else if (c == '\t') {
+            for (int j = 0; j < 4; j++) {
+                framebuffer_write(cursor_row, cursor_col, ' ', color, 0x0);
+                if (++cursor_col >= FRAMEBUFFER_WIDTH) {
+                    cursor_col = 0;
+                    cursor_row++;
+                }
+            }
+        } else {
+            framebuffer_write(cursor_row, cursor_col, c, color, 0x0);
+            cursor_col++;
+            if (cursor_col >= FRAMEBUFFER_WIDTH) {
+                cursor_col = 0;
+                cursor_row++;
+            }
+        }
+    }
+    framebuffer_set_cursor(cursor_row, cursor_col);
+}
+
 void putchar(char c, uint8_t color) {
-    uint8_t fg = color & 0x0F;
-    uint8_t bg = (color >> 4) & 0x0F;
-    
     if (c == '\n') {
         cursor_row++;
         cursor_col = 0;
-        framebuffer_set_cursor(cursor_row, cursor_col);
+    } else if (c == '\b') {
+        if (cursor_col > 0) {
+            cursor_col--;
+            framebuffer_write(cursor_row, cursor_col, ' ', 0x0F, 0x00);
+        }
+    } else if (c == '\t') {
+        for (int i = 0; i < 4; i++) {
+            framebuffer_write(cursor_row, cursor_col, ' ', color, 0x0);
+            if (++cursor_col >= FRAMEBUFFER_WIDTH) {
+                cursor_col = 0;
+                cursor_row++;
+            }
+        }
     } else {
-        framebuffer_write(cursor_row, cursor_col, c, fg, bg);
+        framebuffer_write(cursor_row, cursor_col, c, color, 0x0);
         cursor_col++;
         if (cursor_col >= FRAMEBUFFER_WIDTH) {
             cursor_col = 0;
             cursor_row++;
         }
-        framebuffer_set_cursor(cursor_row, cursor_col);
     }
-}
 
-void puts(char *str, uint32_t char_count, uint8_t color) {
-    for (uint32_t i = 0; i < char_count; i++) {
-        putchar(str[i], color);
-    }
+    framebuffer_set_cursor(cursor_row, cursor_col);
 }

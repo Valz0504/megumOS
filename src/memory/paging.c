@@ -57,18 +57,6 @@ bool paging_allocate_check(uint32_t amount) {
 
 
 bool paging_allocate_user_page_frame(struct PageDirectory *page_dir, void *virtual_addr) {
-    /**
-     * TODO: Find free physical frame and map virtual frame into it
-     * - Find free physical frame in page_manager_state.page_frame_map[] using any strategies
-     * - Mark page_manager_state.page_frame_map[]
-     * - Update page directory with user flags:
-     *     > present bit    true
-     *     > write bit      true
-     *     > user bit       true
-     *     > pagesize 4 mb  true
-     */ 
-
-    // uint32_t page_index = ((uint32_t) virtual_addr >> 22) & 0x3FF;
     for (uint32_t i = 0; i < PAGE_FRAME_MAX_COUNT; i++) {
         if (!page_manager_state.page_frame_map[i]) {
             page_manager_state.page_frame_map[i] = true;
@@ -88,18 +76,13 @@ bool paging_allocate_user_page_frame(struct PageDirectory *page_dir, void *virtu
         }
     }
     if (page_manager_state.free_page_frame_count == 0) {
-        return false; // No free page frame available
+        return false;
     }
 
     return true;
 }
 
 bool paging_free_user_page_frame(struct PageDirectory *page_dir, void *virtual_addr) {
-    /* 
-     * TODO: Deallocate a physical frame from respective virtual address
-     * - Use the page_dir.table values to check mapped physical frame
-     * - Remove the entry by setting it into 0
-     */
     uint32_t page_index = ((uint32_t) virtual_addr >> 22) & 0x3FF;
     uint32_t physical_frame = page_dir->table[page_index].lower_address << 22;
     page_manager_state.page_frame_map[physical_frame / PAGE_FRAME_SIZE] = false;
@@ -122,19 +105,7 @@ static struct {
     .page_directory_used = {false},
 };
 
-struct PageDirectory* paging_create_new_page_directory(void) {
-    /*
-     * TODO: Get & initialize empty page directory from page_directory_list
-     * - Iterate page_directory_list[] & get unused page directory
-     * - Mark selected page directory as used
-     * - Create new page directory entry for kernel higher half with flag:
-     *     > present bit    true
-     *     > write bit      true
-     *     > pagesize 4 mb  true
-     *     > lower address  0
-     * - Set page_directory.table[0x300] with kernel page directory entry
-     * - Return the page directory address
-     */ 
+struct PageDirectory* paging_create_new_page_directory(void) { 
     for (int i = 0; i < PAGING_DIRECTORY_TABLE_MAX_COUNT; i++) {
         if (!page_directory_manager.page_directory_used[i]) {
             page_directory_manager.page_directory_used[i] = true;
@@ -151,12 +122,6 @@ struct PageDirectory* paging_create_new_page_directory(void) {
 }
 
 bool paging_free_page_directory(struct PageDirectory *page_dir) {
-    /**
-     * TODO: Iterate & clear page directory values
-     * - Iterate page_directory_list[] & check &page_directory_list[] == page_dir
-     * - If matches, mark the page directory as unusued and clear all page directory entry
-     * - Return true
-     */
     for (int i = 0; i < PAGING_DIRECTORY_TABLE_MAX_COUNT; i++) {
         if (&page_directory_list[i] == page_dir) {
             page_directory_manager.page_directory_used[i] = false;
@@ -170,7 +135,7 @@ bool paging_free_page_directory(struct PageDirectory *page_dir) {
             return true;
         }
     }
-    return false; // Page directory not found
+    return false; 
 }
 
 

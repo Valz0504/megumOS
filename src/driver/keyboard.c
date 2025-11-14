@@ -45,7 +45,7 @@ void keyboard_isr(void) {
     }
 
     char ascii = keyboard_scancode_1_to_ascii_map[scancode];
-    if (ascii != 0) {  // Only store valid characters
+    if (ascii != '\0') {
         keyboard_state.keyboard_buffer = ascii;
     }
 
@@ -61,13 +61,19 @@ void keyboard_state_deactivate(void) {
 }
 
 void get_keyboard_buffer(char *buf) {
-    // Blocking wait until keyboard buffer has data
+    uint32_t saved_flags;
+    __asm__ volatile("pushf\n\tpop %0" : "=r"(saved_flags) :: "memory");
+
     while (keyboard_state.keyboard_buffer == '\0') {
-        // Busy wait for keyboard interrupt
-        // Interrupt will fill keyboard_buffer
+        __asm__ volatile("hlt" ::: "memory");
     }
-    
+
     *buf = keyboard_state.keyboard_buffer;
     keyboard_state.keyboard_buffer = '\0';
+
+    if ((saved_flags & 0x200) == 0) {
+        __asm__ volatile("cli" ::: "memory");
+    }
 }
+
 

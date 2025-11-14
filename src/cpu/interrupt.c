@@ -56,6 +56,8 @@ void activate_keyboard_interrupt(void) {
 }
 
 void syscall(struct InterruptFrame frame) {
+    __asm__ volatile("sti");
+    
     switch (frame.cpu.general.eax) {
         case 0:
             *((int8_t*) frame.cpu.general.ecx) = read(
@@ -83,7 +85,7 @@ void syscall(struct InterruptFrame frame) {
         case 5:
             putchar(
                 (char) frame.cpu.general.ebx, 
-                (uint8_t) frame.cpu.general.edx
+                frame.cpu.general.ecx
             );
             break;
         case 6:

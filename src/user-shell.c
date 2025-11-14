@@ -31,7 +31,7 @@ int main(void) {
     syscall(7, 0, 0, 0);
     while (true) {
         syscall(4, (uint32_t) &buf, 0, 0);
-        syscall(5, (uint32_t) &buf, 0xF, 0);
+        syscall(5, (uint32_t) buf, 0xF, 0);
     }
 
 
