@@ -222,19 +222,43 @@ void initialize_filesystem_ext2(void) {
 bool is_directory_empty(uint32_t inode) {
     struct EXT2Inode node;
     read_node(&node, inode);
-    
-    if (node.i_blocks == 0) {
+
+    if (node.i_blocks == 0)
         return true;
+
+    struct BlockBuffer buf;
+    read_blocks(&buf, node.i_block[0], 1);
+
+    uint32_t offset = 0;
+
+    while (offset < BLOCK_SIZE) {
+        struct EXT2DirectoryEntry *e = (struct EXT2DirectoryEntry *)(buf.buf + offset);
+
+        if (e->rec_len == 0) break;
+        if (e->inode != 0) {
+            char *name = (char *)(buf.buf + offset + sizeof(*e));
+
+            // SKIP "." DAN ".."
+            if (e->name_len == 1 && name[0] == '.') {
+                offset += e->rec_len;
+                continue;
+            }
+            if (e->name_len == 2 && name[0] == '.' && name[1] == '.') {
+                offset += e->rec_len;
+                continue;
+            }
+
+            // Entry valid selain "." & ".."
+            return false;
+        }
+
+        offset += e->rec_len;
     }
-    
-    struct BlockBuffer dir_buf;
-    read_blocks(&dir_buf, node.i_block[0], 1);
-    
-    uint32_t first_child_offset = get_dir_first_child_offset(dir_buf.buf);
-    struct EXT2DirectoryEntry *first_child = get_directory_entry(dir_buf.buf, first_child_offset);
-    
-    return first_child->inode == 0;
+
+    // Tidak ada entry selain "." & ".."
+    return true;
 }
+
 
 /* =================== MEMORY MANAGEMENT ============================*/
 
@@ -438,54 +462,71 @@ void allocate_node_blocks(void *ptr, struct EXT2Inode *node, uint32_t preferred_
 /* =================== CRUD OPERATIONS ============================*/
 
 int8_t read_directory(struct EXT2DriverRequest *request) {
-    if (request->parent_inode == 0 || request->parent_inode > superblock.s_inodes_count) {
+    if (request->parent_inode == 0 || request->parent_inode > superblock.s_inodes_count)
         return 3;
-    }
-    
+
     struct EXT2Inode parent_node;
     read_node(&parent_node, request->parent_inode);
-    
-    if ((parent_node.i_mode & EXT2_S_IFDIR) == 0) {
+
+    if ((parent_node.i_mode & EXT2_S_IFDIR) == 0)
         return 3;
+
+    // Case: name = ".", return current directory contents
+    if (request->name_len == 1 && request->name[0] == '.') {
+        read_blocks(request->buf, parent_node.i_block[0], 1);
+        return 0;
     }
-    
+
+    // Case: name = ".."
+    if (request->name_len == 2 && request->name[0] == '.' && request->name[1] == '.') {
+        // find parent inode via ".." entry
+        struct BlockBuffer dir_buf;
+        read_blocks(&dir_buf, parent_node.i_block[0], 1);
+
+        struct EXT2DirectoryEntry *dot = (void*)dir_buf.buf;
+        struct EXT2DirectoryEntry *dotdot = get_next_directory_entry(dot);
+
+        uint32_t parent_inode = dotdot->inode;
+
+        struct EXT2Inode pnode;
+        read_node(&pnode, parent_inode);
+
+        read_blocks(request->buf, pnode.i_block[0], 1);
+        return 0;
+    }
+
+    // Case: reading named directory inside current directory
     struct BlockBuffer dir_buf;
     read_blocks(&dir_buf, parent_node.i_block[0], 1);
-    
+
     uint32_t offset = 0;
     while (offset < BLOCK_SIZE) {
         struct EXT2DirectoryEntry *entry = get_directory_entry(dir_buf.buf, offset);
-        
-        if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) {
-            break;
-        }
-        
-        if (entry->inode == 0) {
-            break;
-        }
-        
+
+        if (entry->rec_len == 0) break;
+        if (entry->inode == 0) break;
+
         char *entry_name = get_entry_name(entry);
-        
-        if (entry->name_len == request->name_len && 
+
+        if (entry->name_len == request->name_len &&
             memcmp(entry_name, request->name, request->name_len) == 0) {
-            
-            if (entry->file_type != EXT2_FT_DIR) {
+
+            struct EXT2Inode node;
+            read_node(&node, entry->inode);
+
+            if (entry->file_type != EXT2_FT_DIR)
                 return 1;
-            }
-            
-            struct EXT2Inode dir_inode;
-            read_node(&dir_inode, entry->inode);
-            
-            memcpy(request->buf, &dir_inode, sizeof(struct EXT2Inode));
-            
+
+            read_blocks(request->buf, node.i_block[0], 1);
             return 0;
         }
-        
+
         offset += entry->rec_len;
     }
-    
+
     return 2;
 }
+
 
 int8_t read(struct EXT2DriverRequest request) {
     static struct BlockBuffer dir_buf;
@@ -646,14 +687,14 @@ int8_t write(struct EXT2DriverRequest *request) {
 
 int8_t delete(struct EXT2DriverRequest request) {
     if (request.parent_inode == 0 || request.parent_inode > superblock.s_inodes_count) {
-        return 3;
+        return 3;   // invalid parent
     }
     
     struct EXT2Inode parent_node;
     read_node(&parent_node, request.parent_inode);
     
     if ((parent_node.i_mode & EXT2_S_IFDIR) == 0) {
-        return 3;
+        return 3;   // parent bukan directory
     }
     
     struct BlockBuffer dir_buf;
@@ -678,16 +719,82 @@ int8_t delete(struct EXT2DriverRequest request) {
         if (entry->name_len == request.name_len && 
             memcmp(entry_name, request.name, request.name_len) == 0) {
             
+            // Kalau targetnya DIRECTORY
             if (entry->file_type == EXT2_FT_DIR) {
-                if (!is_directory_empty(entry->inode)) {
-                    return 2;
+
+                if (request.is_directory) {
+                    // MODE REKURSIF: hapus semua anak dulu
+
+                    struct EXT2Inode dir_inode;
+                    read_node(&dir_inode, entry->inode);
+
+                    if (dir_inode.i_blocks > 0 && dir_inode.i_block[0] != 0) {
+                        struct BlockBuffer child_buf;
+
+                        bool has_child = true;
+                        while (has_child) {
+                            has_child = false;
+
+                            read_blocks(&child_buf, dir_inode.i_block[0], 1);
+                            uint32_t child_offset = 0;
+
+                            while (child_offset < BLOCK_SIZE) {
+                                struct EXT2DirectoryEntry *child =
+                                    get_directory_entry(child_buf.buf, child_offset);
+
+                                if (child->rec_len == 0 ||
+                                    child->rec_len > BLOCK_SIZE - child_offset)
+                                    break;
+
+                                if (child->inode == 0) {
+                                    child_offset += child->rec_len;
+                                    continue;
+                                }
+
+                                char *child_name = get_entry_name(child);
+
+                                // skip "." dan ".."
+                                if ((child->name_len == 1 && child_name[0] == '.') ||
+                                    (child->name_len == 2 && child_name[0] == '.' && child_name[1] == '.')) {
+                                    child_offset += child->rec_len;
+                                    continue;
+                                }
+
+                                // Delete anak secara rekursif
+                                struct EXT2DriverRequest child_req = {
+                                    .buf = NULL,
+                                    .name = child_name,
+                                    .name_len = child->name_len,
+                                    .parent_inode = entry->inode,
+                                    .buffer_size = 0,
+                                    .is_directory = true     // recursive
+                                };
+
+                                int8_t child_ret = delete(child_req);
+                                // Kalau gagal, bisa di-handle, tapi untuk sekarang kita abaikan
+                                (void) child_ret;
+
+                                // setelah delete, ulang scan dari awal
+                                has_child = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // MODE BIASA: directory harus kosong
+                    if (!is_directory_empty(entry->inode)) {
+                        return 2;   // directory not empty
+                    }
                 }
-                
+
+                // Di sini directory sudah kosong (baik dari awal, atau setelah recursive delete)
                 bgd_table.table[inode_to_bgd(entry->inode)].bg_used_dirs_count--;
             }
             
+            // Hapus inode (baik file maupun directory)
             deallocate_node(entry->inode);
             
+            // Hapus entry di parent directory
             if (prev_entry != NULL) {
                 prev_entry->rec_len += entry->rec_len;
             } else {
@@ -705,5 +812,5 @@ int8_t delete(struct EXT2DriverRequest request) {
         offset += entry->rec_len;
     }
     
-    return 1;
+    return 1;   // entry tidak ditemukan
 }
