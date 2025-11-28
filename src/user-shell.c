@@ -20,6 +20,220 @@ void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
 int current_directory = 1;
 char current_directory_name[32] = "/";
 
+// Resolve a path and change current_directory/current_directory_name on success
+static bool resolve_and_change_dir(const char *path_input)
+{
+    // Work on copies so we don't mutate globals until success
+    uint32_t inode = (path_input[0] == '/') ? 1 : current_directory;
+    char new_path[32];
+    if (path_input[0] == '/')
+        strcpy(new_path, "/");
+    else
+        strcpy(new_path, current_directory_name);
+
+    char path_copy[128];
+    strncpy(path_copy, path_input, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+
+    char *token = path_copy;
+    if (token[0] == '/')
+        token++; // skip leading slash
+
+    while (*token) {
+        // Find next separator
+        char *slash = token;
+        while (*slash && *slash != '/') slash++;
+        bool last = (*slash == '\0');
+        char saved = *slash;
+        *slash = '\0';
+
+        // Skip empty / .
+        if (token[0] == '\0' || (token[0] == '.' && token[1] == '\0')) {
+            // nothing
+        } else if (token[0] == '.' && token[1] == '.' && token[2] == '\0') {
+            // cd ..
+            char bufp[1024];
+            struct EXT2DriverRequest reqp = {
+                .buf = bufp,
+                .name = ".",
+                .name_len = 1,
+                .parent_inode = inode,
+                .buffer_size = sizeof(bufp),
+                .is_directory = true
+            };
+            int8_t retp;
+            syscall(1, (uint32_t)&reqp, (uint32_t)&retp, 0);
+            if (retp != 0) return false;
+            struct EXT2DirectoryEntry *dot = (void *)bufp;
+            struct EXT2DirectoryEntry *dotdot = (void *)((uint8_t *)dot + dot->rec_len);
+            inode = dotdot->inode;
+
+            // pop from path string
+            if (strcmp(new_path, "/") != 0) {
+                char *last_slash = strrchr(new_path, '/');
+                if (last_slash) {
+                    if (last_slash == new_path)
+                        new_path[1] = '\0';
+                    else
+                        *last_slash = '\0';
+                }
+            }
+        } else {
+            // normal component: request directory and read its inode
+            char dirbuf[1024];
+            struct EXT2DriverRequest req = {
+                .buf = dirbuf,
+                .name = token,
+                .name_len = strlen(token),
+                .parent_inode = inode,
+                .buffer_size = sizeof(dirbuf),
+                .is_directory = true
+            };
+            int8_t ret;
+            syscall(1, (uint32_t)&req, (uint32_t)&ret, 0);
+            if (ret != 0) return false;
+            struct EXT2DirectoryEntry *dot = (void *)dirbuf;
+            inode = dot->inode;
+
+            // append to path string
+            if (strcmp(new_path, "/") != 0) {
+                if (strlen(new_path) + 1 >= sizeof(new_path))
+                    return false;
+                strcat(new_path, "/");
+            }
+            if (strlen(new_path) + strlen(token) >= sizeof(new_path))
+                return false;
+            strcat(new_path, token);
+        }
+
+        *slash = saved;
+        if (last) break;
+        token = slash + 1;
+    }
+
+    current_directory = inode;
+    strcpy(current_directory_name, new_path);
+    return true;
+}
+
+// Resolve a path to its parent directory inode and final component name.
+// Supports absolute and relative paths with '.' and '..'.
+static bool resolve_parent_and_name(const char *path_input, uint32_t *parent_inode_out,
+                                    char *name_out, uint8_t *name_len_out)
+{
+    if (!path_input || !parent_inode_out || !name_out || !name_len_out) return false;
+    if (strcmp(path_input, "/") == 0) return false; // cannot use root as name
+
+    uint32_t inode = (path_input[0] == '/') ? 1 : current_directory;
+
+    char path_copy[128];
+    strncpy(path_copy, path_input, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+
+    char *token = path_copy;
+    if (token[0] == '/')
+        token++; // skip leading slash
+
+    char *last_comp = NULL;
+    uint8_t last_len = 0;
+
+    while (true) {
+        char *slash = token;
+        while (*slash && *slash != '/') slash++;
+        bool last = (*slash == '\0');
+        char saved = *slash;
+        *slash = '\0';
+
+        if (token[0] == '\0' || (token[0] == '.' && token[1] == '\0')) {
+            // skip
+        } else if (token[0] == '.' && token[1] == '.' && token[2] == '\0') {
+            // go up
+            char bufp[1024];
+            struct EXT2DriverRequest reqp = {
+                .buf = bufp,
+                .name = ".",
+                .name_len = 1,
+                .parent_inode = inode,
+                .buffer_size = sizeof(bufp),
+                .is_directory = true
+            };
+            int8_t retp;
+            syscall(1, (uint32_t)&reqp, (uint32_t)&retp, 0);
+            if (retp != 0) return false;
+            struct EXT2DirectoryEntry *dot = (void *)bufp;
+            struct EXT2DirectoryEntry *dotdot = (void *)((uint8_t *)dot + dot->rec_len);
+            inode = dotdot->inode;
+        } else {
+            if (last) {
+                last_comp = token;
+                last_len = (uint8_t)strlen(token);
+            } else {
+                char dirbuf[1024];
+                struct EXT2DriverRequest req = {
+                    .buf = dirbuf,
+                    .name = token,
+                    .name_len = strlen(token),
+                    .parent_inode = inode,
+                    .buffer_size = sizeof(dirbuf),
+                    .is_directory = true
+                };
+                int8_t ret;
+                syscall(1, (uint32_t)&req, (uint32_t)&ret, 0);
+                if (ret != 0) return false;
+                struct EXT2DirectoryEntry *dot = (void *)dirbuf;
+                inode = dot->inode;
+            }
+        }
+
+        *slash = saved;
+        if (last) break;
+        token = slash + 1;
+    }
+
+    if (last_comp == NULL || last_len == 0 || last_len > 31) return false;
+
+    *parent_inode_out = inode;
+    *name_len_out = last_len;
+    memcpy(name_out, last_comp, last_len);
+    name_out[last_len] = '\0';
+    return true;
+}
+
+// Resolve a directory path to its inode without changing current state.
+static bool resolve_dir_inode(const char *path_input, uint32_t *inode_out)
+{
+    if (!path_input || !inode_out) return false;
+    if (strcmp(path_input, "/") == 0) {
+        *inode_out = 1;
+        return true;
+    }
+    if (strcmp(path_input, ".") == 0) {
+        *inode_out = current_directory;
+        return true;
+    }
+    uint32_t dummy_parent;
+    char name[32];
+    uint8_t name_len;
+    // Try to split into parent + name and ensure the last component is a directory
+    if (!resolve_parent_and_name(path_input, &dummy_parent, name, &name_len))
+        return false;
+
+    char dirbuf[1024];
+    struct EXT2DriverRequest req = {
+        .buf = dirbuf,
+        .name = name,
+        .name_len = name_len,
+        .parent_inode = dummy_parent,
+        .buffer_size = sizeof(dirbuf),
+        .is_directory = true
+    };
+    int8_t ret;
+    syscall(1, (uint32_t)&req, (uint32_t)&ret, 0);
+    if (ret != 0) return false;
+    struct EXT2DirectoryEntry *dot = (void *)dirbuf;
+    *inode_out = dot->inode;
+    return true;
+}
 void find_recursive(uint32_t dir_inode, const char *path, const char *target, int depth)
 {
     if (depth > 8) return;
@@ -188,11 +402,18 @@ int main(void)
                 syscall(6, (uint32_t)"mkdir: missing argument\n", strlen("mkdir: missing argument\n"), 0xF);
                 continue;
             }
+            uint32_t parent_inode;
+            char name[32];
+            uint8_t name_len;
+            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len)) {
+                syscall(6, (uint32_t)"mkdir: invalid path\n", strlen("mkdir: invalid path\n"), 0xF);
+                continue;
+            }
             struct EXT2DriverRequest req = {
                 .buf = NULL,
-                .name = argv[1],
-                .name_len = (uint32_t)strlen(argv[1]),
-                .parent_inode = current_directory,
+                .name = name,
+                .name_len = name_len,
+                .parent_inode = parent_inode,
                 .buffer_size = 0,
                 .is_directory = true};
             uint32_t retcode = 0;
@@ -201,11 +422,20 @@ int main(void)
         }
         else if (strcmp(argv[0], "ls") == 0)
         {
+            uint32_t target_inode = current_directory;
+            if (argc >= 2) {
+                if (!resolve_dir_inode(argv[1], &target_inode)) {
+                    syscall(6, (uint32_t)"ls: directory not found\n",
+                            strlen("ls: directory not found\n"), 0x0F);
+                    continue;
+                }
+            }
+
             struct EXT2DriverRequest req = {
                 .buf = (void *)0x210000,
                 .name = ".",
                 .name_len = 1,
-                .parent_inode = current_directory,
+                .parent_inode = target_inode,
                 .buffer_size = 1024,
                 .is_directory = true};
             uint32_t retcode = 0;
@@ -263,88 +493,26 @@ int main(void)
                 continue;
             }
 
-            // cd /
-            if (strcmp(argv[1], "/") == 0) {
-                current_directory = 1;
-                strcpy(current_directory_name, "/");
-                continue;
-            }
-
-            // cd ..
-            if (strcmp(argv[1], "..") == 0) {
-
-                // 1. baca inode parent dari entry ".."
-                char bufp[1024];
-                struct EXT2DriverRequest reqp = {
-                    .buf = bufp,
-                    .name = "..",
-                    .name_len = 2,
-                    .parent_inode = current_directory,
-                    .buffer_size = 1024,
-                    .is_directory = true
-                };
-
-                int8_t retp;
-                syscall(1,(uint32_t)&reqp,(uint32_t)&retp,0);
-
-                if (retp == 0) {
-                    struct EXT2DirectoryEntry *e = (void*)(bufp + 0);
-                    current_directory = e->inode;
-                }
-
-                // 2. update path string
-                if (strcmp(current_directory_name, "/") != 0) {
-                    char *last = strrchr(current_directory_name, '/');
-
-                    if (last) {
-                        if (last == current_directory_name) {
-                            current_directory_name[1] = '\0';
-                        } else {
-                            *last = '\0';
-                        }
-                    }
-                }
-
-                continue;
-            }
-
-            // cd directory normal
-            char buf[1024] = {0};
-            struct EXT2DriverRequest req = {
-                .buf = buf,
-                .name = argv[1],
-                .name_len = strlen(argv[1]),
-                .parent_inode = current_directory,
-                .buffer_size = 1024,
-                .is_directory = true
-            };
-
-            int8_t ret;
-            syscall(1,(uint32_t)&req,(uint32_t)&ret,0);
-
-            if (ret == 0) {
-                struct EXT2DirectoryEntry *e = (void*)(buf + 0);
-                current_directory = e->inode;
-
-                // update path
-                if (strcmp(current_directory_name, "/") != 0)
-                    strcat(current_directory_name, "/");
-                strcat(current_directory_name, argv[1]);
-
-            } else {
+            if (!resolve_and_change_dir(argv[1])) {
                 syscall(6,(uint32_t)"cd: directory not found\n",
                         strlen("cd: directory not found\n"),0x0F);
             }
-
             continue;
         }
         else if (strcmp(argv[0], "cat") == 0 && argc >= 2)
         {
+            uint32_t parent_inode;
+            char name[32];
+            uint8_t name_len;
+            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len)) {
+                syscall(6, (uint32_t)"cat: file not found\n", 21, 0x0F);
+                continue;
+            }
             struct EXT2DriverRequest req = {
                 .buf = (void *)0x200000,
-                .name = argv[1],
-                .name_len = (uint32_t)strlen(argv[1]),
-                .parent_inode = current_directory,
+                .name = name,
+                .name_len = name_len,
+                .parent_inode = parent_inode,
                 .buffer_size = 8192,
                 .is_directory = false};
 
@@ -373,6 +541,14 @@ int main(void)
                 continue;
             }
 
+            uint32_t parent_inode;
+            char name[32];
+            uint8_t name_len;
+            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len)) {
+                syscall(6, (uint32_t)"write: invalid path\n", strlen("write: invalid path\n"), 0x0F);
+                continue;
+            }
+
             char content[1024];
             content[0] = '\0';
 
@@ -385,9 +561,9 @@ int main(void)
 
             struct EXT2DriverRequest req = {
                 .buf = content,
-                .name = argv[1],
-                .name_len = (uint32_t)strlen(argv[1]),
-                .parent_inode = current_directory,
+                .name = name,
+                .name_len = name_len,
+                .parent_inode = parent_inode,
                 .buffer_size = (uint32_t)strlen(content),
                 .is_directory = false};
 
@@ -414,26 +590,35 @@ int main(void)
             }
 
             bool recursive = false;
-            char *target = NULL;
+            char *target_path = NULL;
 
             if (argc >= 3 && strcmp(argv[1], "-r") == 0) {
                 recursive = true;
-                target = argv[2];
+                target_path = argv[2];
             } else {
-                target = argv[1];
+                target_path = argv[1];
             }
 
-            if (target == NULL) {
+            if (target_path == NULL) {
                 syscall(6,(uint32_t)"rm: missing name\n",
                         strlen("rm: missing name\n"),0x0F);
                 continue;
             }
 
+            uint32_t parent_inode;
+            char name[32];
+            uint8_t name_len;
+            if (!resolve_parent_and_name(target_path, &parent_inode, name, &name_len)) {
+                syscall(6,(uint32_t)"rm: not found\n",
+                        strlen("rm: not found\n"),0x0F);
+                continue;
+            }
+
             struct EXT2DriverRequest req = {
                 .buf = NULL,
-                .name = target,
-                .name_len = strlen(target),
-                .parent_inode = current_directory,
+                .name = name,
+                .name_len = name_len,
+                .parent_inode = parent_inode,
                 .buffer_size = 0,
                 .is_directory = recursive ? true : false   // dipakai sebagai "recursive" flag
             };
@@ -467,7 +652,16 @@ int main(void)
                         strlen("find: missing name\n"),0x0F);
                 continue;
             }
-            find_recursive(1, "/", argv[1], 0);
+            uint32_t start_inode = current_directory;
+            char start_path[32];
+            strcpy(start_path, current_directory_name);
+            if (argc >= 3 && strcmp(argv[1], "/") == 0) {
+                start_inode = 1;
+                strcpy(start_path, "/");
+                find_recursive(start_inode, start_path, argv[2], 0);
+            } else {
+                find_recursive(start_inode, start_path, argv[1], 0);
+            }
             continue;
         }
         else if (strcmp(argv[0], "cp") == 0) {
@@ -477,17 +671,29 @@ int main(void)
                 continue;
             }
 
-            char *src = argv[1];
-            char *dst = argv[2];
+            uint32_t src_parent, dst_parent;
+            char src_name[32], dst_name[32];
+            uint8_t src_name_len, dst_name_len;
+
+            if (!resolve_parent_and_name(argv[1], &src_parent, src_name, &src_name_len)) {
+                syscall(6, (uint32_t)"cp: source not found\n",
+                        strlen("cp: source not found\n"), 0x0F);
+                continue;
+            }
+            if (!resolve_parent_and_name(argv[2], &dst_parent, dst_name, &dst_name_len)) {
+                syscall(6, (uint32_t)"cp: invalid destination\n",
+                        strlen("cp: invalid destination\n"), 0x0F);
+                continue;
+            }
 
             uint8_t *file_buf = (uint8_t *)0x230000;  // 4KB buffer at fixed address
             int8_t retcode;
 
             struct EXT2DriverRequest rreq = {
                 .buf = file_buf,
-                .name = src,
-                .name_len = strlen(src),
-                .parent_inode = current_directory,
+                .name = src_name,
+                .name_len = src_name_len,
+                .parent_inode = src_parent,
                 .buffer_size = 4096,
                 .is_directory = false
             };
@@ -503,9 +709,9 @@ int main(void)
 
             struct EXT2DriverRequest wreq = {
                 .buf = file_buf,
-                .name = dst,
-                .name_len = strlen(dst),
-                .parent_inode = current_directory,
+                .name = dst_name,
+                .name_len = dst_name_len,
+                .parent_inode = dst_parent,
                 .buffer_size = filesize,
                 .is_directory = false
             };
@@ -519,6 +725,67 @@ int main(void)
 
             continue;
         }
+        else if (strcmp(argv[0], "mv") == 0) {
+            if (argc < 3) {
+                syscall(6, (uint32_t)"mv: usage: mv <src> <dst>\n",
+                        strlen("mv: usage: mv <src> <dst>\n"), 0x0F);
+                continue;
+            }
+
+            uint32_t src_parent, dst_parent;
+            char src_name[32], dst_name[32];
+            uint8_t src_name_len, dst_name_len;
+
+            if (!resolve_parent_and_name(argv[1], &src_parent, src_name, &src_name_len)) {
+                syscall(6, (uint32_t)"mv: source not found\n",
+                        strlen("mv: source not found\n"), 0x0F);
+                continue;
+            }
+
+            uint32_t dst_dir_inode = 0;
+            if (resolve_dir_inode(argv[2], &dst_dir_inode)) {
+                dst_parent = dst_dir_inode;
+                dst_name_len = src_name_len;
+                memcpy(dst_name, src_name, src_name_len);
+                dst_name[src_name_len] = '\0';
+            } else {
+                if (!resolve_parent_and_name(argv[2], &dst_parent, dst_name, &dst_name_len)) {
+                    syscall(6, (uint32_t)"mv: invalid destination\n",
+                            strlen("mv: invalid destination\n"), 0x0F);
+                    continue;
+                }
+            }
+
+            struct EXT2MoveRequest mreq = {
+                .src_name = src_name,
+                .src_name_len = src_name_len,
+                .src_parent_inode = src_parent,
+                .dst_name = dst_name,
+                .dst_name_len = dst_name_len,
+                .dst_parent_inode = dst_parent
+            };
+
+            int8_t retcode = 0;
+            syscall(9, (uint32_t)&mreq, (uint32_t)&retcode, 0);
+
+            if (retcode == 0) {
+                // success
+            } else if (retcode == 1) {
+                syscall(6, (uint32_t)"mv: source not found\n",
+                        strlen("mv: source not found\n"), 0x0F);
+            } else if (retcode == 2) {
+                syscall(6, (uint32_t)"mv: destination exists\n",
+                        strlen("mv: destination exists\n"), 0x0F);
+            } else if (retcode == 4) {
+                syscall(6, (uint32_t)"mv: no space in destination directory\n",
+                        strlen("mv: no space in destination directory\n"), 0x0F);
+            } else {
+                syscall(6, (uint32_t)"mv: error\n",
+                        strlen("mv: error\n"), 0x0F);
+            }
+            continue;
+        }
+        
         else
         {
             syscall(6, (uint32_t)"Unknown command: ", 17, 0x0F);

@@ -19,6 +19,12 @@ static struct EXT2Superblock superblock;
 static struct EXT2BlockGroupDescriptorTable bgd_table;
 
 /* =================== HELPER FUNCTIONS ============================*/
+// Forward declarations for inode helpers used before their definitions
+void read_node(struct EXT2Inode *node, uint32_t inode);
+void sync_node(struct EXT2Inode *node, uint32_t inode);
+static bool is_ancestor(uint32_t ancestor, uint32_t node);
+static bool allocate_one_block(uint32_t preferred_bgd, uint32_t *out_block);
+static void free_one_block(uint32_t block_num);
 
 char *get_entry_name(void *entry) {
     return (char *)((uint8_t *)entry + sizeof(struct EXT2DirectoryEntry));
@@ -49,6 +55,51 @@ uint32_t inode_to_bgd(uint32_t inode) {
 
 uint32_t inode_to_local(uint32_t inode) {
     return (inode - 1) % INODES_PER_GROUP;
+}
+
+static void update_parent_pointer(uint32_t dir_inode, uint32_t new_parent_inode) {
+    struct EXT2Inode dir_node;
+    read_node(&dir_node, dir_inode);
+
+    if ((dir_node.i_mode & EXT2_S_IFDIR) == 0 ||
+        dir_node.i_blocks == 0 ||
+        dir_node.i_block[0] == 0) {
+        return;
+    }
+
+    struct BlockBuffer dir_buf;
+    read_blocks(&dir_buf, dir_node.i_block[0], 1);
+
+    struct EXT2DirectoryEntry *dot = (struct EXT2DirectoryEntry *)dir_buf.buf;
+    struct EXT2DirectoryEntry *dotdot = get_next_directory_entry(dot);
+    dotdot->inode = new_parent_inode;
+
+    write_blocks(&dir_buf, dir_node.i_block[0], 1);
+}
+
+// Walk up parent chain to see if "ancestor" is in the path of "node"
+static bool is_ancestor(uint32_t ancestor, uint32_t node) {
+    uint32_t current = node;
+    while (true) {
+        if (current == ancestor) return true;
+        if (current == 1) return false; // reached root
+
+        struct EXT2Inode cur_node;
+        read_node(&cur_node, current);
+        if ((cur_node.i_mode & EXT2_S_IFDIR) == 0 || cur_node.i_blocks == 0 || cur_node.i_block[0] == 0) {
+            return false;
+        }
+
+        struct BlockBuffer dir_buf;
+        read_blocks(&dir_buf, cur_node.i_block[0], 1);
+        struct EXT2DirectoryEntry *dot = (void *)dir_buf.buf;
+        struct EXT2DirectoryEntry *dotdot = get_next_directory_entry(dot);
+
+        if (dotdot->inode == current || dotdot->inode == 0) {
+            return false; // malformed, bail
+        }
+        current = dotdot->inode;
+    }
 }
 
 /* =================== INODE READ/WRITE HELPERS ============================*/
@@ -314,8 +365,31 @@ void deallocate_node(uint32_t inode) {
     struct EXT2Inode node;
     read_node(&node, inode);
     
-    if (node.i_blocks > 0) {
-        deallocate_blocks(node.i_block, node.i_blocks);
+    // Free direct blocks
+    uint32_t direct_count = (node.i_blocks > 12) ? 12 : node.i_blocks;
+    for (uint32_t i = 0; i < direct_count; i++) {
+        if (node.i_block[i] != 0) {
+            free_one_block(node.i_block[i]);
+            node.i_block[i] = 0;
+        }
+    }
+
+    // Free indirect blocks if present
+    if (node.i_blocks > 12 && node.i_block[12] != 0) {
+        struct BlockBuffer indirect_buf;
+        read_blocks(&indirect_buf, node.i_block[12], 1);
+
+        uint32_t extra = node.i_blocks - 12;
+        uint32_t *entries = (uint32_t *)indirect_buf.buf;
+        for (uint32_t i = 0; i < extra; i++) {
+            if (entries[i] != 0) {
+                free_one_block(entries[i]);
+            }
+        }
+
+        // Free the indirect block itself
+        free_one_block(node.i_block[12]);
+        node.i_block[12] = 0;
     }
     
     memset(&node, 0, sizeof(struct EXT2Inode));
@@ -392,71 +466,118 @@ uint32_t deallocate_block(uint32_t *locations, uint32_t blocks, struct BlockBuff
     return *last_bgd;
 }
 
+static bool allocate_one_block(uint32_t preferred_bgd, uint32_t *out_block) {
+    if (preferred_bgd >= GROUPS_COUNT) preferred_bgd = 0;
+
+    for (uint32_t pass = 0; pass < 2; pass++) {
+        for (uint32_t bgd_idx = (pass == 0 ? preferred_bgd : 0);
+             bgd_idx < GROUPS_COUNT;
+             bgd_idx++) {
+            if (pass == 1 && bgd_idx == preferred_bgd) continue;
+            if (bgd_table.table[bgd_idx].bg_free_blocks_count == 0) continue;
+
+            struct BlockBuffer block_bitmap;
+            read_blocks(&block_bitmap, bgd_table.table[bgd_idx].bg_block_bitmap, 1);
+
+            uint32_t max_blocks = (BLOCKS_PER_GROUP > 4096) ? 4096 : BLOCKS_PER_GROUP;
+            for (uint32_t j = 0; j < max_blocks; j++) {
+                uint32_t byte_idx = j / 8;
+                uint32_t bit_idx = j % 8;
+                if (byte_idx >= BLOCK_SIZE) break;
+                if ((block_bitmap.buf[byte_idx] & (1 << bit_idx)) == 0) {
+                    uint32_t block_num = bgd_idx * BLOCKS_PER_GROUP + j;
+                    block_bitmap.buf[byte_idx] |= (1 << bit_idx);
+                    write_blocks(&block_bitmap, bgd_table.table[bgd_idx].bg_block_bitmap, 1);
+                    bgd_table.table[bgd_idx].bg_free_blocks_count--;
+                    superblock.s_free_blocks_count--;
+                    write_blocks(&bgd_table, 2, 1);
+                    write_blocks(&superblock, 1, 1);
+                    *out_block = block_num;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static void free_one_block(uint32_t block_num) {
+    uint32_t bgd_idx = block_num / BLOCKS_PER_GROUP;
+    uint32_t local_block = block_num % BLOCKS_PER_GROUP;
+    if (bgd_idx >= GROUPS_COUNT) return;
+
+    struct BlockBuffer bitmap;
+    read_blocks(&bitmap, bgd_table.table[bgd_idx].bg_block_bitmap, 1);
+
+    uint32_t byte_idx = local_block / 8;
+    uint32_t bit_idx = local_block % 8;
+    if (byte_idx < BLOCK_SIZE && (bitmap.buf[byte_idx] & (1 << bit_idx))) {
+        bitmap.buf[byte_idx] &= ~(1 << bit_idx);
+        write_blocks(&bitmap, bgd_table.table[bgd_idx].bg_block_bitmap, 1);
+        bgd_table.table[bgd_idx].bg_free_blocks_count++;
+        superblock.s_free_blocks_count++;
+        write_blocks(&bgd_table, 2, 1);
+        write_blocks(&superblock, 1, 1);
+    }
+}
+
 void allocate_node_blocks(void *ptr, struct EXT2Inode *node, uint32_t preferred_bgd) {
     uint32_t blocks_needed = node->i_blocks;
     uint32_t blocks_allocated = 0;
     uint8_t *data = (uint8_t *)ptr;
-    
-    if (preferred_bgd >= GROUPS_COUNT) {
-        preferred_bgd = 0;
-    }
-    
-    for (uint32_t i = 0; i < 12 && blocks_allocated < blocks_needed; i++) {
-        bool block_found = false;
-        
-        for (uint32_t bgd_idx = preferred_bgd; bgd_idx < GROUPS_COUNT && !block_found; bgd_idx++) {
-            if (bgd_table.table[bgd_idx].bg_free_blocks_count == 0) {
-                continue;
+    uint32_t indirect_block = 0;
+    uint32_t indirect_entries[BLOCK_SIZE / sizeof(uint32_t)];
+    memset(indirect_entries, 0, sizeof(indirect_entries));
+
+    for (uint32_t i = 0; i < blocks_needed; i++) {
+        if (i >= 12 && indirect_block == 0) {
+            if (!allocate_one_block(preferred_bgd, &indirect_block)) {
+                break;
             }
-            
-            struct BlockBuffer block_bitmap;
-            read_blocks(&block_bitmap, bgd_table.table[bgd_idx].bg_block_bitmap, 1);
-            
-            uint32_t max_blocks = (BLOCKS_PER_GROUP > 4096) ? 4096 : BLOCKS_PER_GROUP;
-            
-            for (uint32_t j = 0; j < max_blocks && !block_found; j++) {
-                uint32_t byte_idx = j / 8;
-                uint32_t bit_idx = j % 8;
-                
-                if (byte_idx >= BLOCK_SIZE) {
-                    break;
-                }
-                
-                if ((block_bitmap.buf[byte_idx] & (1 << bit_idx)) == 0) {
-                    uint32_t block_num = bgd_idx * BLOCKS_PER_GROUP + j;
-                    node->i_block[i] = block_num;
-                    
-                    struct BlockBuffer data_block;
-                    memset(&data_block, 0, sizeof(struct BlockBuffer));
-                    
-                    if (data != NULL && blocks_allocated * BLOCK_SIZE < node->i_size) {
-                        uint32_t copy_size = BLOCK_SIZE;
-                        if (blocks_allocated * BLOCK_SIZE + BLOCK_SIZE > node->i_size) {
-                            copy_size = node->i_size - blocks_allocated * BLOCK_SIZE;
-                        }
-                        memcpy(data_block.buf, data + blocks_allocated * BLOCK_SIZE, copy_size);
-                    }
-                    write_blocks(&data_block, block_num, 1);
-                    
-                    block_bitmap.buf[byte_idx] |= (1 << bit_idx);
-                    write_blocks(&block_bitmap, bgd_table.table[bgd_idx].bg_block_bitmap, 1);
-                    
-                    bgd_table.table[bgd_idx].bg_free_blocks_count--;
-                    superblock.s_free_blocks_count--;
-                    
-                    blocks_allocated++;
-                    block_found = true;
-                }
-            }
+            node->i_block[12] = indirect_block;
         }
-        
-        if (!block_found) {
+
+        uint32_t block_num = 0;
+        if (!allocate_one_block(preferred_bgd, &block_num)) {
             break;
         }
+
+        if (i < 12) {
+            node->i_block[i] = block_num;
+        } else {
+            indirect_entries[i - 12] = block_num;
+        }
+
+        struct BlockBuffer data_block;
+        memset(&data_block, 0, sizeof(struct BlockBuffer));
+
+        if (data != NULL && blocks_allocated * BLOCK_SIZE < node->i_size) {
+            uint32_t copy_size = BLOCK_SIZE;
+            if (blocks_allocated * BLOCK_SIZE + BLOCK_SIZE > node->i_size) {
+                copy_size = node->i_size - blocks_allocated * BLOCK_SIZE;
+            }
+            memcpy(data_block.buf, data + blocks_allocated * BLOCK_SIZE, copy_size);
+        }
+        write_blocks(&data_block, block_num, 1);
+
+        blocks_allocated++;
     }
-    
-    write_blocks(&bgd_table, 2, 1);
-    write_blocks(&superblock, 1, 1);
+
+    // Write indirect block if used
+    if (indirect_block != 0) {
+        struct BlockBuffer indirect_buf;
+        memset(&indirect_buf, 0, sizeof(struct BlockBuffer));
+        memcpy(indirect_buf.buf, indirect_entries, sizeof(indirect_entries));
+        write_blocks(&indirect_buf, indirect_block, 1);
+    }
+
+    // Adjust i_blocks/i_size if we allocated fewer than requested
+    if (blocks_allocated < blocks_needed) {
+        node->i_blocks = blocks_allocated;
+        if (node->i_size > blocks_allocated * BLOCK_SIZE) {
+            node->i_size = blocks_allocated * BLOCK_SIZE;
+        }
+    }
 }
 
 /* =================== CRUD OPERATIONS ============================*/
@@ -531,6 +652,7 @@ int8_t read_directory(struct EXT2DriverRequest *request) {
 int8_t read(struct EXT2DriverRequest request) {
     static struct BlockBuffer dir_buf;
     static struct BlockBuffer data_block;
+    static struct BlockBuffer indirect_block;
     
     if (request.parent_inode == 0 || request.parent_inode > superblock.s_inodes_count) {
         return 4;
@@ -576,14 +698,38 @@ int8_t read(struct EXT2DriverRequest request) {
             uint8_t *buffer = (uint8_t *)request.buf;
             uint32_t bytes_read = 0;
             
-            for (uint32_t i = 0; i < file_node.i_blocks && i < 12; i++) {
-                read_blocks(&data_block, file_node.i_block[i], 1);
+            uint32_t blocks_to_read = file_node.i_blocks;
+            uint32_t block_index = 0;
+
+            // Direct blocks
+            for (; block_index < blocks_to_read && block_index < 12; block_index++) {
+                read_blocks(&data_block, file_node.i_block[block_index], 1);
                 
                 uint32_t bytes_to_copy = (file_node.i_size - bytes_read > BLOCK_SIZE) ? 
                                          BLOCK_SIZE : (file_node.i_size - bytes_read);
                 
                 memcpy(buffer + bytes_read, data_block.buf, bytes_to_copy);
                 bytes_read += bytes_to_copy;
+                if (bytes_read >= file_node.i_size) break;
+            }
+
+            // Single indirect
+            if (bytes_read < file_node.i_size && block_index < blocks_to_read && block_index >= 12 && file_node.i_block[12] != 0) {
+                read_blocks(&indirect_block, file_node.i_block[12], 1);
+                uint32_t *entries = (uint32_t *)indirect_block.buf;
+                uint32_t indirect_idx = 0;
+                while (block_index < blocks_to_read && indirect_idx < BLOCK_SIZE / sizeof(uint32_t)) {
+                    uint32_t data_block_num = entries[indirect_idx];
+                    if (data_block_num == 0) break;
+                    read_blocks(&data_block, data_block_num, 1);
+                    uint32_t bytes_to_copy = (file_node.i_size - bytes_read > BLOCK_SIZE) ? 
+                                             BLOCK_SIZE : (file_node.i_size - bytes_read);
+                    memcpy(buffer + bytes_read, data_block.buf, bytes_to_copy);
+                    bytes_read += bytes_to_copy;
+                    if (bytes_read >= file_node.i_size) break;
+                    block_index++;
+                    indirect_idx++;
+                }
             }
             
             // Add null terminator at the end
@@ -818,4 +964,186 @@ int8_t delete(struct EXT2DriverRequest request) {
     }
     
     return 1;   // entry tidak ditemukan
+}
+
+int8_t move(struct EXT2MoveRequest *request) {
+    // Validate parents
+    if (request->src_parent_inode == 0 || request->dst_parent_inode == 0 ||
+        request->src_parent_inode > superblock.s_inodes_count ||
+        request->dst_parent_inode > superblock.s_inodes_count) {
+        return 3;
+    }
+
+    // No-op rename
+    if (request->src_parent_inode == request->dst_parent_inode &&
+        request->src_name_len == request->dst_name_len &&
+        memcmp(request->src_name, request->dst_name, request->src_name_len) == 0) {
+        return 0;
+    }
+
+    // Disallow targeting special names
+    if ((request->dst_name_len == 1 && request->dst_name[0] == '.') ||
+        (request->dst_name_len == 2 && request->dst_name[0] == '.' && request->dst_name[1] == '.')) {
+        return 2;
+    }
+
+    struct EXT2Inode src_parent_node, dst_parent_node;
+    read_node(&src_parent_node, request->src_parent_inode);
+    read_node(&dst_parent_node, request->dst_parent_inode);
+
+    if ((src_parent_node.i_mode & EXT2_S_IFDIR) == 0 ||
+        (dst_parent_node.i_mode & EXT2_S_IFDIR) == 0 ||
+        src_parent_node.i_blocks == 0 || dst_parent_node.i_blocks == 0) {
+        return 3;
+    }
+
+    struct BlockBuffer src_buf;
+    read_blocks(&src_buf, src_parent_node.i_block[0], 1);
+
+    // Find source entry
+    uint32_t offset = 0;
+    struct EXT2DirectoryEntry *src_entry = NULL;
+    struct EXT2DirectoryEntry *src_prev = NULL;
+
+    while (offset < BLOCK_SIZE) {
+        struct EXT2DirectoryEntry *entry = get_directory_entry(src_buf.buf, offset);
+
+        if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
+        if (entry->inode == 0) break;
+
+        char *entry_name = get_entry_name(entry);
+
+        // Disallow moving special entries
+        if ((entry->name_len == 1 && entry_name[0] == '.') ||
+            (entry->name_len == 2 && entry_name[0] == '.' && entry_name[1] == '.')) {
+            // Skip special entries
+            offset += entry->rec_len;
+            continue;
+        }
+
+        if (entry->name_len == request->src_name_len &&
+            memcmp(entry_name, request->src_name, request->src_name_len) == 0) {
+            src_entry = entry;
+            break;
+        }
+
+        src_prev = entry;
+        offset += entry->rec_len;
+    }
+
+    if (src_entry == NULL) {
+        return 1;   // source not found
+    }
+
+    // Prepare destination buffer and ensure name not taken
+    struct BlockBuffer dst_buf;
+    read_blocks(&dst_buf, dst_parent_node.i_block[0], 1);
+
+    struct EXT2DirectoryEntry *dst_last = NULL;
+    uint16_t dst_last_actual_len = 0;
+    uint32_t insert_offset = 0;
+    offset = 0;
+    while (offset < BLOCK_SIZE) {
+        struct EXT2DirectoryEntry *entry = get_directory_entry(dst_buf.buf, offset);
+
+        if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
+        if (entry->inode == 0) break;
+
+        char *entry_name = get_entry_name(entry);
+        if (entry->name_len == request->dst_name_len &&
+            memcmp(entry_name, request->dst_name, request->dst_name_len) == 0) {
+            return 2;   // destination exists
+        }
+
+        dst_last = entry;
+        offset += entry->rec_len;
+    }
+
+    uint16_t min_required = get_entry_record_len(request->dst_name_len);
+    if (dst_last != NULL) {
+        dst_last_actual_len = get_entry_record_len(dst_last->name_len);
+        insert_offset = (uint32_t)((uint8_t *)dst_last - dst_buf.buf) + dst_last_actual_len;
+    } else {
+        insert_offset = 0;
+    }
+
+    if (insert_offset + min_required > BLOCK_SIZE) {
+        return 4;   // no space
+    }
+
+    uint32_t moving_inode = src_entry->inode;
+    uint8_t moving_type = src_entry->file_type;
+
+    // Reject attempts to move special entries (e.g., ".." or ".")
+    if (src_prev == NULL) {
+        return 1;
+    }
+
+    // Prevent moving a directory into itself or its descendants
+    if (moving_type == EXT2_FT_DIR &&
+        (request->dst_parent_inode == moving_inode ||
+         is_ancestor(moving_inode, request->dst_parent_inode))) {
+        return 2; // treat as destination exists/invalid
+    }
+
+    // Remove from source directory
+    if (src_prev != NULL) {
+        src_prev->rec_len += src_entry->rec_len;
+    } else {
+        src_entry->inode = 0;
+    }
+    write_blocks(&src_buf, src_parent_node.i_block[0], 1);
+
+    // If moving within same directory, re-read destination buffer after removal
+    if (request->src_parent_inode == request->dst_parent_inode) {
+        read_blocks(&dst_buf, dst_parent_node.i_block[0], 1);
+        dst_last = NULL;
+        offset = 0;
+        while (offset < BLOCK_SIZE) {
+            struct EXT2DirectoryEntry *entry = get_directory_entry(dst_buf.buf, offset);
+
+            if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
+            if (entry->inode == 0) break;
+
+            char *entry_name = get_entry_name(entry);
+            if (entry->name_len == request->dst_name_len &&
+                memcmp(entry_name, request->dst_name, request->dst_name_len) == 0) {
+                return 2;
+            }
+
+            dst_last = entry;
+            offset += entry->rec_len;
+        }
+
+        dst_last_actual_len = (dst_last != NULL) ? get_entry_record_len(dst_last->name_len) : 0;
+        insert_offset = (dst_last != NULL) ?
+            (uint32_t)((uint8_t *)dst_last - dst_buf.buf) + dst_last_actual_len : 0;
+
+        if (insert_offset + min_required > BLOCK_SIZE) {
+            return 4;
+        }
+    }
+
+    if (dst_last != NULL) {
+        dst_last->rec_len = dst_last_actual_len;
+    } else {
+        insert_offset = 0;
+    }
+
+    struct EXT2DirectoryEntry *new_entry = get_directory_entry(dst_buf.buf, insert_offset);
+    new_entry->inode = moving_inode;
+    new_entry->rec_len = BLOCK_SIZE - insert_offset;
+    new_entry->name_len = request->dst_name_len;
+    new_entry->file_type = moving_type;
+    memcpy(get_entry_name(new_entry), request->dst_name, request->dst_name_len);
+
+    write_blocks(&dst_buf, dst_parent_node.i_block[0], 1);
+
+    // Update ".." pointer if moving directory across parents
+    if (moving_type == EXT2_FT_DIR &&
+        request->src_parent_inode != request->dst_parent_inode) {
+        update_parent_pointer(moving_inode, request->dst_parent_inode);
+    }
+
+    return 0;
 }

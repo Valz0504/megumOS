@@ -215,6 +215,19 @@ struct EXT2DirectoryEntry
 }__attribute__((packed));
 
 /**
+ * Move request for renaming or reparenting entries.
+ */
+struct EXT2MoveRequest {
+    char *src_name;
+    uint8_t src_name_len;
+    uint32_t src_parent_inode;
+
+    char *dst_name;
+    uint8_t dst_name_len;
+    uint32_t dst_parent_inode;
+} __attribute__((packed));
+
+/**
  *  REGULAR function
  */
 
@@ -338,6 +351,12 @@ int8_t write(struct EXT2DriverRequest *request);
  * @return Error code: 0 success - 1 not found - 2 folder is not empty - 3 parent folder invalid -1 unknown
  */
 int8_t delete(struct EXT2DriverRequest request);
+
+/**
+ * @brief Rename or move an entry between directories.
+ * @return Error code: 0 success - 1 source not found - 2 destination exists - 3 invalid parent - 4 no space
+ */
+int8_t move(struct EXT2MoveRequest *request);
 
 /* =============================== MEMORY ==========================================*/
 

@@ -101,6 +101,11 @@ void syscall(struct InterruptFrame frame) {
         case 8:
             framebuffer_clear();
             break;
+        case 9:
+            *((int8_t*) frame.cpu.general.ecx) = move(
+                (struct EXT2MoveRequest*) frame.cpu.general.ebx
+            );
+            break;
     }
 }
 
@@ -114,6 +119,5 @@ void main_interrupt_handler(struct InterruptFrame frame) {
             break;
     }
 }
-
 
 

@@ -7,6 +7,7 @@
 
 static uint8_t cursor_row = 0;
 static uint8_t cursor_col = 0;
+static void framebuffer_scroll(void);
 
 void framebuffer_set_cursor(uint8_t r, uint8_t c) {
     // TODO : Implement
@@ -73,6 +74,9 @@ void puts(char* str, uint32_t len, uint8_t color) {
                 cursor_row++;
             }
         }
+        if (cursor_row >= FRAMEBUFFER_HEIGHT) {
+            framebuffer_scroll();
+        }
     }
     framebuffer_set_cursor(cursor_row, cursor_col);
 }
@@ -103,5 +107,26 @@ void putchar(char c, uint8_t color) {
         }
     }
 
+    if (cursor_row >= FRAMEBUFFER_HEIGHT) {
+        framebuffer_scroll();
+    }
     framebuffer_set_cursor(cursor_row, cursor_col);
+}
+
+// Scroll framebuffer up by one row and keep cursor at last row
+static void framebuffer_scroll(void) {
+    // Move all rows up by one
+    size_t row_bytes = FRAMEBUFFER_WIDTH * 2;
+    size_t total_bytes = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 2;
+    char *fb = (char *)FRAMEBUFFER_MEMORY_OFFSET;
+    memmove(fb, fb + row_bytes, total_bytes - row_bytes);
+
+    // Clear last row
+    for (size_t i = total_bytes - row_bytes; i < total_bytes; i += 2) {
+        fb[i] = ' ';
+        fb[i + 1] = 0x07;
+    }
+
+    if (cursor_row > 0) cursor_row = FRAMEBUFFER_HEIGHT - 1;
+    cursor_col = 0;
 }
