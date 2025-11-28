@@ -17,7 +17,7 @@ void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
     __asm__ volatile("int $0x30");
 }
 
-uint32_t current_directory = 1;
+int current_directory = 1;
 char current_directory_name[32] = "/";
 
 void find_recursive(uint32_t dir_inode, const char *path, const char *target, int depth)
@@ -124,16 +124,6 @@ int main(void)
         while (true)
         {
             syscall(4, (uint32_t)&buf, 0, 0);
-            
-            if (buf == '\n')
-            {
-                syscall(5, (uint32_t)'\n', 0x0F, 0);
-                break;
-            }
-            
-            if (buf == '\0')
-                break;
-            
             if (buf == '\b')
             {
                 if (idx > 0)
@@ -143,11 +133,16 @@ int main(void)
                 }
                 continue;
             }
+            syscall(5, (uint32_t)buf, 0xF, 0);
+
+            if (buf == '\n')
+                break;
+            if (buf == '\0')
+                break;
 
             if (idx < MAX_CMD_LEN - 1)
             {
                 line[idx++] = buf;
-                syscall(5, (uint32_t)buf, 0x0F, 0);
             }
         }
 
@@ -343,13 +338,8 @@ int main(void)
 
             continue;
         }
-        else if (strcmp(argv[0], "cat") == 0)
+        else if (strcmp(argv[0], "cat") == 0 && argc >= 2)
         {
-            if (argc < 2) {
-                syscall(6,(uint32_t)"cd: missing argument\n",23,0x0F);
-                continue;
-            }
-
             struct EXT2DriverRequest req = {
                 .buf = (void *)0x200000,
                 .name = argv[1],
@@ -374,6 +364,7 @@ int main(void)
             }
             continue;
         }
+
         else if (strcmp(argv[0], "write") == 0) 
         {
             if (argc < 3)
@@ -530,15 +521,10 @@ int main(void)
         }
         else
         {
-            char u[] = "Unknown command: ";
-            int i = 0;
-            while (u[i] != '\0') {
-                syscall(5, (uint32_t)u[i], 0x0F, 0);
-                i++;
-            }
-            
+            syscall(6, (uint32_t)"Unknown command: ", 17, 0x0F);
             syscall(6, (uint32_t)argv[0], strlen(argv[0]), 0x0F);
-            syscall(5, (uint32_t)'\n', 0x0F, 0);
+            syscall(6, (uint32_t)"\n", 1, 0x0F);
+            continue;
         }
     }
     return 0;

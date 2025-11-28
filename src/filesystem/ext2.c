@@ -586,6 +586,11 @@ int8_t read(struct EXT2DriverRequest request) {
                 bytes_read += bytes_to_copy;
             }
             
+            // Add null terminator at the end
+            if (bytes_read < request.buffer_size) {
+                buffer[bytes_read] = '\0';
+            }
+            
             return 0;
         }
         
