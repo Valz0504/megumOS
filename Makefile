@@ -54,6 +54,7 @@ kernel:
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
 
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/text/framebuffer.c -o $(OUTPUT_FOLDER)/framebuffer.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/graphics/graphics.c -o $(OUTPUT_FOLDER)/graphics.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/portio.c -o $(OUTPUT_FOLDER)/portio.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/idt.c -o $(OUTPUT_FOLDER)/idt.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/cpu/interrupt.c -o $(OUTPUT_FOLDER)/interrupt.o
@@ -108,6 +109,7 @@ user-shell:
 	@rm -f *.o
 
 apps: app-hello
+apps: app-clock
 
 app-hello:
 	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0_ret.s -o crt0_ret.o
@@ -118,6 +120,17 @@ app-hello:
 	@echo Linking external app: hello
 	@rm -f crt0_ret.o app-hello.o string.o
 
+app-clock:
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0_ret.s -o crt0_ret.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/app/clock.c -o app-clock.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/stdlib/string.c -o string.o
+	@$(LIN) -T $(APP_LINKER) -melf_i386 --oformat=binary \
+		crt0_ret.o app-clock.o string.o -o $(OUTPUT_FOLDER)/clock
+	@echo Linking external app: clock
+	@$(LIN) -T $(APP_LINKER) -melf_i386 --oformat=elf32-i386 \
+		crt0_ret.o app-clock.o string.o -o $(OUTPUT_FOLDER)/clock_elf
+	@rm -f crt0_ret.o app-clock.o string.o
+
 
 insert-shell: inserter user-shell
 	@echo Inserting shell into root directory...
@@ -126,3 +139,8 @@ insert-shell: inserter user-shell
 insert-apps: inserter apps
 	@echo Inserting apps into root directory...
 	@cd $(OUTPUT_FOLDER); ./inserter hello 1 $(DISK_NAME).bin
+	@cd $(OUTPUT_FOLDER); ./inserter clock 1 $(DISK_NAME).bin
+
+insert-clock: inserter app-clock
+	@echo Inserting clock into root directory...
+	@cd $(OUTPUT_FOLDER); ./inserter clock 1 $(DISK_NAME).bin

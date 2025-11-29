@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include "header/filesystem/ext2.h"
 #include "header/stdlib/string.h"
 #include "header/driver/cmos.h"
@@ -11,6 +12,8 @@
 #define MAX_ENV_VAL 48
 #define APP_LOAD_ADDR ((void*)0x00200000)
 #define APP_MAX_SIZE (512 * 1024)
+#define PID_SHELL 1
+#define PID_CLOCK 2
 
 void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
 {
@@ -32,6 +35,24 @@ struct EnvEntry {
     bool used;
 };
 static struct EnvEntry env_table[MAX_ENV];
+
+static bool parse_int(const char *s, int *out) {
+    if (!s || !out || *s == '\0') return false;
+    int sign = 1;
+    if (*s == '-') { sign = -1; s++; }
+    else if (*s == '+') { s++; }
+    int value = 0;
+    bool has_digit = false;
+    while (*s) {
+        if (*s < '0' || *s > '9') return false;
+        has_digit = true;
+        value = value * 10 + (*s - '0');
+        s++;
+    }
+    if (!has_digit) return false;
+    *out = value * sign;
+    return true;
+}
 
 static void env_set(const char *key, const char *val) {
     if (!key || !val) return;
@@ -934,6 +955,50 @@ int main(void)
             syscall(11, 0, 0, 0); // start clock drawing in kernel scheduler
             syscall(6, (uint32_t)"Clock started (bottom-right)\n",
                     strlen("Clock started (bottom-right)\n"), 0x0F);
+            continue;
+        }
+        else if (strcmp(argv[0], "ps") == 0) {
+            syscall(6, (uint32_t)"PID  NAME   STATE\n", strlen("PID  NAME   STATE\n"), 0x0F);
+            syscall(6, (uint32_t)"1    shell  RUNNING\n", strlen("1    shell  RUNNING\n"), 0x0F);
+            bool clock_on = false;
+            syscall(13, 0, (uint32_t)&clock_on, 0);
+            if (clock_on) {
+                syscall(6, (uint32_t)"2    clock  RUNNING\n", strlen("2    clock  RUNNING\n"), 0x0F);
+            }
+            continue;
+        }
+        else if (strcmp(argv[0], "kill") == 0) {
+            if (argc < 2) {
+                syscall(6, (uint32_t)"kill: usage: kill <pid>\n",
+                        strlen("kill: usage: kill <pid>\n"), 0x0F);
+                continue;
+            }
+            int pid;
+            if (!parse_int(argv[1], &pid) || pid <= 0) {
+                syscall(6, (uint32_t)"kill: invalid pid\n",
+                        strlen("kill: invalid pid\n"), 0x0F);
+                continue;
+            }
+            if (pid == PID_SHELL) {
+                syscall(6, (uint32_t)"kill: cannot terminate shell\n",
+                        strlen("kill: cannot terminate shell\n"), 0x0F);
+                continue;
+            }
+            if (pid == PID_CLOCK) {
+                bool clock_on = false;
+                syscall(13, 0, (uint32_t)&clock_on, 0);
+                if (!clock_on) {
+                    syscall(6, (uint32_t)"kill: process not found\n",
+                            strlen("kill: process not found\n"), 0x0F);
+                    continue;
+                }
+                syscall(12, 0, 0, 0);
+                syscall(6, (uint32_t)"killed pid 2 (clock)\n",
+                        strlen("killed pid 2 (clock)\n"), 0x0F);
+                continue;
+            }
+            syscall(6, (uint32_t)"kill: process not found\n",
+                    strlen("kill: process not found\n"), 0x0F);
             continue;
         }
         else if (strcmp(argv[0], "exec") == 0) {

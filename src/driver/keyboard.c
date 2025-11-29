@@ -1,7 +1,5 @@
 #include "../header/driver/keyboard.h"
 #include "../header/cpu/portio.h"
-#include "../header/text/framebuffer.h"
-#include "../header/stdlib/string.h"
 
 static struct KeyboardDriverState keyboard_state = {
   .read_extended_mode = false,
@@ -104,5 +102,3 @@ void get_keyboard_buffer(char *buf) {
         __asm__ volatile("cli" ::: "memory");
     }
 }
-
-

@@ -4,6 +4,7 @@
 #include "../header/driver/keyboard.h"
 #include "../header/text/framebuffer.h"
 #include "../header/filesystem/ext2.h"
+#include "../header/process/scheduler.h"
 
 struct TSSEntry _interrupt_tss_entry = {
     .ss0  = GDT_KERNEL_DATA_SEGMENT_SELECTOR,
@@ -106,11 +107,23 @@ void syscall(struct InterruptFrame frame) {
                 (struct EXT2MoveRequest*) frame.cpu.general.ebx
             );
             break;
+        case 11:
+            scheduler_clock_start();
+            break;
+        case 12:
+            scheduler_clock_stop();
+            break;
+        case 13:
+            *((bool*) frame.cpu.general.ecx) = scheduler_clock_status();
+            break;
     }
 }
 
 void main_interrupt_handler(struct InterruptFrame frame) {
     switch (frame.int_number) {
+        case PIC1_OFFSET + IRQ_TIMER:
+            scheduler_tick(&frame);
+            break;
         case PIC1_OFFSET + IRQ_KEYBOARD:
             keyboard_isr();
             break;
@@ -119,5 +132,3 @@ void main_interrupt_handler(struct InterruptFrame frame) {
             break;
     }
 }
-
-
