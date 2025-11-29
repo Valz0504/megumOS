@@ -532,6 +532,66 @@ int main(void)
             }
             continue;
         }
+        else if (strcmp(argv[0], "grep") == 0)
+        {
+            if (argc < 3) {
+                syscall(6, (uint32_t)"grep: usage: grep <pattern> <file>\n",
+                        strlen("grep: usage: grep <pattern> <file>\n"), 0x0F);
+                continue;
+            }
+
+            const char *pattern = argv[1];
+            uint32_t pattern_len = strlen(pattern);
+            if (pattern_len == 0) {
+                syscall(6, (uint32_t)"grep: empty pattern\n",
+                        strlen("grep: empty pattern\n"), 0x0F);
+                continue;
+            }
+
+            uint32_t parent_inode;
+            char name[32];
+            uint8_t name_len;
+            if (!resolve_parent_and_name(argv[2], &parent_inode, name, &name_len)) {
+                syscall(6, (uint32_t)"grep: file not found\n",
+                        strlen("grep: file not found\n"), 0x0F);
+                continue;
+            }
+
+            struct EXT2DriverRequest req = {
+                .buf = (void *)0x200000,
+                .name = name,
+                .name_len = name_len,
+                .parent_inode = parent_inode,
+                .buffer_size = 8192,
+                .is_directory = false};
+
+            int8_t retcode;
+            syscall(0, (uint32_t)&req, (uint32_t)&retcode, 0);
+            if (retcode != 0) {
+                syscall(6, (uint32_t)"grep: file not found\n",
+                        strlen("grep: file not found\n"), 0x0F);
+                continue;
+            }
+
+            char *content = (char *)req.buf;
+            uint32_t len = strlen(content);
+            char *line_start = content;
+
+            for (uint32_t i = 0; i <= len; i++) {
+                if (content[i] == '\n' || content[i] == '\0') {
+                    char saved = content[i];
+                    content[i] = '\0';
+                    if (strstr(line_start, pattern) != NULL) {
+                        syscall(6, (uint32_t)line_start, strlen(line_start), 0x0F);
+                        syscall(6, (uint32_t)"\n", 1, 0x0F);
+                    }
+                    content[i] = saved;
+                    if (saved == '\0') break;
+                    line_start = content + i + 1;
+                }
+            }
+            continue;
+        }
 
         else if (strcmp(argv[0], "write") == 0) 
         {
