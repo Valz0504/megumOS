@@ -13,6 +13,9 @@ OUTPUT_FOLDER = bin
 ISO_NAME      = OS2025
 DISK_NAME      = storage
 
+# User app load base to avoid shell overwrite
+APP_LINKER    = $(SOURCE_FOLDER)/user-app-linker.ld
+
 # Flags
 WARNING_CFLAG = -Wall -Wextra -Werror
 DEBUG_CFLAG   = -fshort-wchar -g
@@ -33,7 +36,7 @@ all: build
 build: iso
 
 clean:
-	rm -rf *.o *.iso $(OUTPUT_FOLDER)/kernel
+	rm -rf *.o *.iso $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/*.o $(OUTPUT_FOLDER)/iso
 
 disk:
 	@qemu-img create -f raw $(OUTPUT_FOLDER)/$(DISK_NAME).bin 4M
@@ -57,9 +60,11 @@ kernel:
 
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/driver/keyboard.c -o $(OUTPUT_FOLDER)/keyboard.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/driver/disk.c -o $(OUTPUT_FOLDER)/disk.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/driver/cmos.c -o $(OUTPUT_FOLDER)/cmos.o
 
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/memory/paging.c -o $(OUTPUT_FOLDER)/paging.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/filesystem/ext2.c -o $(OUTPUT_FOLDER)/ext2.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/process/scheduler.c -o $(OUTPUT_FOLDER)/scheduler.o
 
 	# Link all object files
 	@$(LIN) $(LFLAGS) $(OUTPUT_FOLDER)/*.o -o $(OUTPUT_FOLDER)/kernel
@@ -102,7 +107,22 @@ user-shell:
 	@size --target=binary $(OUTPUT_FOLDER)/shell
 	@rm -f *.o
 
+apps: app-hello
+
+app-hello:
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0_ret.s -o crt0_ret.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/app/hello.c -o app-hello.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/stdlib/string.c -o string.o
+	@$(LIN) -T $(APP_LINKER) -melf_i386 --oformat=binary \
+		crt0_ret.o app-hello.o string.o -o $(OUTPUT_FOLDER)/hello
+	@echo Linking external app: hello
+	@rm -f crt0_ret.o app-hello.o string.o
+
 
 insert-shell: inserter user-shell
 	@echo Inserting shell into root directory...
 	@cd $(OUTPUT_FOLDER); ./inserter shell 1 $(DISK_NAME).bin
+
+insert-apps: inserter apps
+	@echo Inserting apps into root directory...
+	@cd $(OUTPUT_FOLDER); ./inserter hello 1 $(DISK_NAME).bin

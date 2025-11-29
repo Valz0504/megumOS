@@ -1,10 +1,16 @@
 #include <stdint.h>
 #include "header/filesystem/ext2.h"
 #include "header/stdlib/string.h"
+#include "header/driver/cmos.h"
 
 #define BLOCK_COUNT 16
 #define MAX_CMD_LEN 128
 #define MAX_ARGS 16
+#define MAX_ENV 8
+#define MAX_ENV_KEY 16
+#define MAX_ENV_VAL 48
+#define APP_LOAD_ADDR ((void*)0x00200000)
+#define APP_MAX_SIZE (512 * 1024)
 
 void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
 {
@@ -19,6 +25,54 @@ void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
 
 int current_directory = 1;
 char current_directory_name[32] = "/";
+
+struct EnvEntry {
+    char key[MAX_ENV_KEY];
+    char val[MAX_ENV_VAL];
+    bool used;
+};
+static struct EnvEntry env_table[MAX_ENV];
+
+static void env_set(const char *key, const char *val) {
+    if (!key || !val) return;
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (env_table[i].used && strcmp(env_table[i].key, key) == 0) {
+            strncpy(env_table[i].val, val, MAX_ENV_VAL - 1);
+            env_table[i].val[MAX_ENV_VAL - 1] = '\0';
+            return;
+        }
+    }
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (!env_table[i].used) {
+            env_table[i].used = true;
+            strncpy(env_table[i].key, key, MAX_ENV_KEY - 1);
+            env_table[i].key[MAX_ENV_KEY - 1] = '\0';
+            strncpy(env_table[i].val, val, MAX_ENV_VAL - 1);
+            env_table[i].val[MAX_ENV_VAL - 1] = '\0';
+            return;
+        }
+    }
+}
+
+static const char *env_get(const char *key) {
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (env_table[i].used && strcmp(env_table[i].key, key) == 0) {
+            return env_table[i].val;
+        }
+    }
+    return NULL;
+}
+
+static void env_print_all(void) {
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (env_table[i].used) {
+            syscall(6, (uint32_t)env_table[i].key, strlen(env_table[i].key), 0x0F);
+            syscall(6, (uint32_t)"=", 1, 0x0F);
+            syscall(6, (uint32_t)env_table[i].val, strlen(env_table[i].val), 0x0F);
+            syscall(6, (uint32_t)"\n", 1, 0x0F);
+        }
+    }
+}
 
 // Resolve a path and change current_directory/current_directory_name on success
 static bool resolve_and_change_dir(const char *path_input)
@@ -232,6 +286,37 @@ static bool resolve_dir_inode(const char *path_input, uint32_t *inode_out)
     if (ret != 0) return false;
     struct EXT2DirectoryEntry *dot = (void *)dirbuf;
     *inode_out = dot->inode;
+    return true;
+}
+
+// Load binary file into fixed memory and execute it as external app
+static bool exec_external(const char *path_input)
+{
+    uint32_t parent;
+    char name[32];
+    uint8_t name_len;
+    if (!resolve_parent_and_name(path_input, &parent, name, &name_len)) {
+        syscall(6, (uint32_t)"exec: not found\n", strlen("exec: not found\n"), 0x0F);
+        return false;
+    }
+
+    struct EXT2DriverRequest req = {
+        .buf = APP_LOAD_ADDR,
+        .name = name,
+        .name_len = name_len,
+        .parent_inode = parent,
+        .buffer_size = APP_MAX_SIZE,
+        .is_directory = false
+    };
+    int8_t ret = 0;
+    syscall(0, (uint32_t)&req, (uint32_t)&ret, 0);
+    if (ret != 0) {
+        syscall(6, (uint32_t)"exec: load failed\n", strlen("exec: load failed\n"), 0x0F);
+        return false;
+    }
+
+    void (*app_entry)(void) = (void (*)(void))APP_LOAD_ADDR;
+    app_entry();
     return true;
 }
 void find_recursive(uint32_t dir_inode, const char *path, const char *target, int depth)
@@ -843,6 +928,49 @@ int main(void)
                 syscall(6, (uint32_t)"mv: error\n",
                         strlen("mv: error\n"), 0x0F);
             }
+            continue;
+        }
+        else if (strcmp(argv[0], "clock") == 0) {
+            syscall(11, 0, 0, 0); // start clock drawing in kernel scheduler
+            syscall(6, (uint32_t)"Clock started (bottom-right)\n",
+                    strlen("Clock started (bottom-right)\n"), 0x0F);
+            continue;
+        }
+        else if (strcmp(argv[0], "exec") == 0) {
+            if (argc < 2) {
+                syscall(6, (uint32_t)"exec: usage: exec <program>\n",
+                        strlen("exec: usage: exec <program>\n"), 0x0F);
+            } else {
+                exec_external(argv[1]);
+            }
+            continue;
+        }
+        else if (strcmp(argv[0], "setenv") == 0) {
+            if (argc < 3) {
+                syscall(6, (uint32_t)"setenv: usage: setenv KEY VALUE\n",
+                        strlen("setenv: usage: setenv KEY VALUE\n"), 0x0F);
+            } else {
+                env_set(argv[1], argv[2]);
+            }
+            continue;
+        }
+        else if (strcmp(argv[0], "getenv") == 0) {
+            if (argc < 2) {
+                syscall(6, (uint32_t)"getenv: usage: getenv KEY\n",
+                        strlen("getenv: usage: getenv KEY\n"), 0x0F);
+            } else {
+                const char *val = env_get(argv[1]);
+                if (val) {
+                    syscall(6, (uint32_t)val, strlen(val), 0x0F);
+                    syscall(6, (uint32_t)"\n", 1, 0x0F);
+                } else {
+                    syscall(6, (uint32_t)"(not set)\n", strlen("(not set)\n"), 0x0F);
+                }
+            }
+            continue;
+        }
+        else if (strcmp(argv[0], "printenv") == 0) {
+            env_print_all();
             continue;
         }
         
