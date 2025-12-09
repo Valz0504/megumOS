@@ -24,8 +24,6 @@
 - [Instalasi](#-instalasi)
 - [Cara Menjalankan](#-cara-menjalankan)
 - [Struktur Proyek](#-struktur-proyek)
-- [Dokumentasi](#-dokumentasi)
-- [Maskot](#-maskot)
 
 ---
 
