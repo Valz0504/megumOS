@@ -79,6 +79,9 @@ megumOS adalah sistem operasi sederhana yang dikembangkan sebagai bagian dari Tu
   - `setenv` - Set environment variable
   - `getenv` - Get environment variable
   - `printenv` - Print all environment variables
+- **External Applications**
+  - `hello` - Print hello
+  - `snake` - Play snake game
 
 ### Graphics
 
