@@ -1,4 +1,4 @@
-![Fushiguro Megumi](megumi.png)
+![Fushiguro Megumi](mascot.png)
 
 # megumOS - Operating System Project
 
