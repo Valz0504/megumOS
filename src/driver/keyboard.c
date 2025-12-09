@@ -102,3 +102,12 @@ void get_keyboard_buffer(char *buf) {
         __asm__ volatile("cli" ::: "memory");
     }
 }
+
+bool keyboard_try_read(char *buf) {
+    if (keyboard_state.keyboard_buffer == '\0') {
+        return false;
+    }
+    *buf = keyboard_state.keyboard_buffer;
+    keyboard_state.keyboard_buffer = '\0';
+    return true;
+}
