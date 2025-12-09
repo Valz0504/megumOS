@@ -524,8 +524,6 @@ int main(void)
 
             if (buf == '\0')
                 break;
-
-            // Print and add to buffer
             syscall(5, (uint32_t)buf, 0xF, 0);
 
             if (idx < MAX_CMD_LEN - 1)
@@ -599,11 +597,8 @@ int main(void)
 
             if (has_redirect && redirect_file)
             {
-                // Mode write ke file
                 char content[1024];
                 content[0] = '\0';
-
-                // Gabungkan semua argumen sebelum operator redirection
                 for (int i = 1; i < content_end; i++)
                 {
                     strcat(content, argv[i]);
@@ -774,36 +769,26 @@ int main(void)
                         strlen("cat: usage: cat <file> or cat > <file>\n"), 0x0F);
                 continue;
             }
-
-            // Cek apakah mode write: cat > file.txt
             if (argc >= 3 && strcmp(argv[1], ">") == 0)
             {
-                // Mode write interaktif
                 char *target_file = argv[2];
                 char input_buffer[2048];
                 int buf_idx = 0;
 
                 syscall(6, (uint32_t)"(Type text, press Ctrl+D on new line to finish)\n",
                         strlen("(Type text, press Ctrl+D on new line to finish)\n"), 0x0F);
-
-                // Baca input dari user sampai Ctrl+D (End of Transmission = 0x04)
                 while (buf_idx < 2047)
                 {
                     char ch;
                     syscall(4, (uint32_t)&ch, 0, 0);
-
-                    // Ctrl+D detection
                     if (ch == 0x04)
                     {
                         break;
                     }
-
-                    // Handle backspace
                     if (ch == '\b')
                     {
                         if (buf_idx > 0)
                         {
-                            // Jangan hapus newline yang sudah di-commit
                             if (input_buffer[buf_idx - 1] != '\n')
                             {
                                 syscall(5, (uint32_t)ch, 0x0F, 0);
@@ -812,16 +797,12 @@ int main(void)
                         }
                         continue;
                     }
-
-                    // Handle newline - print tapi masukkan ke buffer juga (untuk cat)
                     if (ch == '\n')
                     {
                         syscall(5, (uint32_t)ch, 0x0F, 0);
                         input_buffer[buf_idx++] = ch;
                         continue;
                     }
-
-                    // Print dan add ke buffer
                     syscall(5, (uint32_t)ch, 0x0F, 0);
                     input_buffer[buf_idx++] = ch;
                 }
