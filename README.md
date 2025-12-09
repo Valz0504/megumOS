@@ -6,14 +6,14 @@
 
 ---
 
-## 👥 Kelompok MeguMOS
+## 👥 Kelompok megumOS
 
 | Nama                 | NIM      |
 | -------------------- | -------- |
 | Kevin Wirya Valerian | 13524019 |
 | Made Branenda Jordhy | 13524026 |
 | Emilio Justin        | 13524043 |
-| Farrel Limjaya       | 13524046 |
+| Farrell Limjaya      | 13524046 |
 
 ---
 
