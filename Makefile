@@ -144,3 +144,7 @@ insert-apps: inserter apps
 insert-clock: inserter app-clock
 	@echo Inserting clock into root directory...
 	@cd $(OUTPUT_FOLDER); ./inserter clock 1 $(DISK_NAME).bin
+
+megumos: build inserter insert-shell insert-apps
+	@echo === MEGUMOS COMPLETE ===
+	@echo Shell and all apps inserted!

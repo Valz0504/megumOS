@@ -126,7 +126,7 @@ cd tugas-besar-os-megumos
 Compile kernel dan dependencies:
 
 ```bash
-make build
+make megumos
 ```
 
 File hasil kompilasi akan tersimpan di folder `bin/`.
