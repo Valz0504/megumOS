@@ -676,6 +676,12 @@ int main(void)
                 .is_directory = true};
             uint32_t retcode = 0;
             syscall(2, (uint32_t)&req, (uint32_t)&retcode, 0);
+
+            if (retcode != 0)
+            {
+                syscall(6, (uint32_t)"mkdir: cannot create directory (already exists or error)\n",
+                        strlen("mkdir: cannot create directory (already exists or error)\n"), 0xF);
+            }
             continue;
         }
         else if (strcmp(argv[0], "ls") == 0)
