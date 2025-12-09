@@ -9,12 +9,16 @@
 #include "header/driver/disk.h"
 #include "header/memory/paging.h"
 #include "header/filesystem/ext2.h"
+#include "header/process/scheduler.h"
+#include "header/graphics/graphics.h"
 
 void kernel_setup(void) {
     load_gdt(&_gdt_gdtr);
     pic_remap();
     initialize_idt();
     activate_keyboard_interrupt();
+    scheduler_init();
+    initialize_vga();
     framebuffer_clear();
     framebuffer_set_cursor(0, 0);
     initialize_filesystem_ext2();
@@ -40,7 +44,6 @@ void kernel_setup(void) {
 
     while (true);
 }
-
 
 
 
