@@ -10,7 +10,7 @@
 #define MAX_ENV 8
 #define MAX_ENV_KEY 16
 #define MAX_ENV_VAL 48
-#define APP_LOAD_ADDR ((void *)0x00200000)
+#define APP_LOAD_ADDR ((void*)0x00200000)
 #define APP_MAX_SIZE (512 * 1024)
 #define PID_SHELL 1
 #define PID_CLOCK 2
@@ -29,61 +29,42 @@ void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
 int current_directory = 1;
 char current_directory_name[32] = "/";
 
-struct EnvEntry
-{
+struct EnvEntry {
     char key[MAX_ENV_KEY];
     char val[MAX_ENV_VAL];
     bool used;
 };
 static struct EnvEntry env_table[MAX_ENV];
 
-static bool parse_int(const char *s, int *out)
-{
-    if (!s || !out || *s == '\0')
-        return false;
+static bool parse_int(const char *s, int *out) {
+    if (!s || !out || *s == '\0') return false;
     int sign = 1;
-    if (*s == '-')
-    {
-        sign = -1;
-        s++;
-    }
-    else if (*s == '+')
-    {
-        s++;
-    }
+    if (*s == '-') { sign = -1; s++; }
+    else if (*s == '+') { s++; }
     int value = 0;
     bool has_digit = false;
-    while (*s)
-    {
-        if (*s < '0' || *s > '9')
-            return false;
+    while (*s) {
+        if (*s < '0' || *s > '9') return false;
         has_digit = true;
         value = value * 10 + (*s - '0');
         s++;
     }
-    if (!has_digit)
-        return false;
+    if (!has_digit) return false;
     *out = value * sign;
     return true;
 }
 
-static void env_set(const char *key, const char *val)
-{
-    if (!key || !val)
-        return;
-    for (int i = 0; i < MAX_ENV; i++)
-    {
-        if (env_table[i].used && strcmp(env_table[i].key, key) == 0)
-        {
+static void env_set(const char *key, const char *val) {
+    if (!key || !val) return;
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (env_table[i].used && strcmp(env_table[i].key, key) == 0) {
             strncpy(env_table[i].val, val, MAX_ENV_VAL - 1);
             env_table[i].val[MAX_ENV_VAL - 1] = '\0';
             return;
         }
     }
-    for (int i = 0; i < MAX_ENV; i++)
-    {
-        if (!env_table[i].used)
-        {
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (!env_table[i].used) {
             env_table[i].used = true;
             strncpy(env_table[i].key, key, MAX_ENV_KEY - 1);
             env_table[i].key[MAX_ENV_KEY - 1] = '\0';
@@ -94,24 +75,18 @@ static void env_set(const char *key, const char *val)
     }
 }
 
-static const char *env_get(const char *key)
-{
-    for (int i = 0; i < MAX_ENV; i++)
-    {
-        if (env_table[i].used && strcmp(env_table[i].key, key) == 0)
-        {
+static const char *env_get(const char *key) {
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (env_table[i].used && strcmp(env_table[i].key, key) == 0) {
             return env_table[i].val;
         }
     }
     return NULL;
 }
 
-static void env_print_all(void)
-{
-    for (int i = 0; i < MAX_ENV; i++)
-    {
-        if (env_table[i].used)
-        {
+static void env_print_all(void) {
+    for (int i = 0; i < MAX_ENV; i++) {
+        if (env_table[i].used) {
             syscall(6, (uint32_t)env_table[i].key, strlen(env_table[i].key), 0x0F);
             syscall(6, (uint32_t)"=", 1, 0x0F);
             syscall(6, (uint32_t)env_table[i].val, strlen(env_table[i].val), 0x0F);
@@ -242,6 +217,13 @@ static bool resolve_parent_and_name(const char *path_input, uint32_t *parent_ino
     char path_copy[128];
     strncpy(path_copy, path_input, sizeof(path_copy) - 1);
     path_copy[sizeof(path_copy) - 1] = '\0';
+    
+    // Remove trailing slashes
+    size_t plen = strlen(path_copy);
+    while (plen > 1 && path_copy[plen - 1] == '/') {
+        path_copy[plen - 1] = '\0';
+        plen--;
+    }
 
     char *token = path_copy;
     if (token[0] == '/')
@@ -325,41 +307,89 @@ static bool resolve_parent_and_name(const char *path_input, uint32_t *parent_ino
 }
 
 // Resolve a directory path to its inode without changing current state.
+// Supports paths like ".", "..", "../..", "dir/../other", etc.
 static bool resolve_dir_inode(const char *path_input, uint32_t *inode_out)
 {
-    if (!path_input || !inode_out)
-        return false;
-    if (strcmp(path_input, "/") == 0)
-    {
+    if (!path_input || !inode_out) return false;
+    
+    // Handle trailing slash by making a copy and trimming it
+    char path_copy[128];
+    strncpy(path_copy, path_input, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+    
+    // Remove trailing slashes (except for root)
+    size_t len = strlen(path_copy);
+    while (len > 1 && path_copy[len - 1] == '/') {
+        path_copy[len - 1] = '\0';
+        len--;
+    }
+    
+    if (strcmp(path_copy, "/") == 0) {
         *inode_out = 1;
         return true;
     }
-    if (strcmp(path_input, ".") == 0)
-    {
+    if (strcmp(path_copy, ".") == 0) {
         *inode_out = current_directory;
         return true;
     }
-    uint32_t dummy_parent;
-    char name[32];
-    uint8_t name_len;
-    // Try to split into parent + name and ensure the last component is a directory
-    if (!resolve_parent_and_name(path_input, &dummy_parent, name, &name_len))
-        return false;
-
-    char dirbuf[1024];
-    struct EXT2DriverRequest req = {
-        .buf = dirbuf,
-        .name = name,
-        .name_len = name_len,
-        .parent_inode = dummy_parent,
-        .buffer_size = sizeof(dirbuf),
-        .is_directory = true};
-    int8_t ret;
-    syscall(1, (uint32_t)&req, (uint32_t)&ret, 0);
-    if (ret != 0)
-        return false;
-    struct EXT2DirectoryEntry *dot = (void *)dirbuf;
-    *inode_out = dot->inode;
+    
+    // Walk through the path component by component
+    uint32_t inode = (path_copy[0] == '/') ? 1 : current_directory;
+    
+    char *token = path_copy;
+    if (token[0] == '/') token++; // skip leading slash
+    
+    while (*token) {
+        // Find next separator
+        char *slash = token;
+        while (*slash && *slash != '/') slash++;
+        bool last = (*slash == '\0');
+        char saved = *slash;
+        *slash = '\0';
+        
+        if (token[0] == '\0' || (token[0] == '.' && token[1] == '\0')) {
+            // "." or empty - stay in current
+        } else if (token[0] == '.' && token[1] == '.' && token[2] == '\0') {
+            // ".." - go up one directory
+            char bufp[1024];
+            struct EXT2DriverRequest reqp = {
+                .buf = bufp,
+                .name = ".",
+                .name_len = 1,
+                .parent_inode = inode,
+                .buffer_size = sizeof(bufp),
+                .is_directory = true
+            };
+            int8_t retp;
+            syscall(1, (uint32_t)&reqp, (uint32_t)&retp, 0);
+            if (retp != 0) return false;
+            struct EXT2DirectoryEntry *dot = (void *)bufp;
+            struct EXT2DirectoryEntry *dotdot = (void *)((uint8_t *)dot + dot->rec_len);
+            inode = dotdot->inode;
+        } else {
+            // Normal directory name - descend into it
+            char dirbuf[1024];
+            struct EXT2DriverRequest req = {
+                .buf = dirbuf,
+                .name = token,
+                .name_len = strlen(token),
+                .parent_inode = inode,
+                .buffer_size = sizeof(dirbuf),
+                .is_directory = true
+            };
+            int8_t ret;
+            syscall(1, (uint32_t)&req, (uint32_t)&ret, 0);
+            if (ret != 0) return false;
+            struct EXT2DirectoryEntry *dot = (void *)dirbuf;
+            inode = dot->inode;
+        }
+        
+        *slash = saved;
+        if (last) break;
+        token = slash + 1;
+    }
+    
+    *inode_out = inode;
     return true;
 }
 
@@ -369,8 +399,7 @@ static bool exec_external(const char *path_input)
     uint32_t parent;
     char name[32];
     uint8_t name_len;
-    if (!resolve_parent_and_name(path_input, &parent, name, &name_len))
-    {
+    if (!resolve_parent_and_name(path_input, &parent, name, &name_len)) {
         syscall(6, (uint32_t)"exec: not found\n", strlen("exec: not found\n"), 0x0F);
         return false;
     }
@@ -381,11 +410,11 @@ static bool exec_external(const char *path_input)
         .name_len = name_len,
         .parent_inode = parent,
         .buffer_size = APP_MAX_SIZE,
-        .is_directory = false};
+        .is_directory = false
+    };
     int8_t ret = 0;
     syscall(0, (uint32_t)&req, (uint32_t)&ret, 0);
-    if (ret != 0)
-    {
+    if (ret != 0) {
         syscall(6, (uint32_t)"exec: load failed\n", strlen("exec: load failed\n"), 0x0F);
         return false;
     }
@@ -396,10 +425,9 @@ static bool exec_external(const char *path_input)
 }
 void find_recursive(uint32_t dir_inode, const char *path, const char *target, int depth)
 {
-    if (depth > 8)
-        return;
-
-    uint32_t base_addr = 0x220000 + (depth * 0x800); // 2KB per level
+    if (depth > 8) return;
+    
+    uint32_t base_addr = 0x220000 + (depth * 0x800);  // 2KB per level
     char *find_buf = (char *)base_addr;
     char *find_name_buf = (char *)(base_addr + 0x400); // +1KB
     char *find_path_buf = (char *)(base_addr + 0x600); // +1.5KB
@@ -477,6 +505,129 @@ void find_recursive(uint32_t dir_inode, const char *path, const char *target, in
         if (e->file_type == EXT2_FT_DIR)
         {
             find_recursive(e->inode, find_path_buf, target, depth + 1);
+        }
+
+        offset += e->rec_len;
+    }
+}
+
+// Copy a single file from src to dst
+static bool cp_file(uint32_t src_parent, const char *src_name, uint8_t src_name_len,
+                    uint32_t dst_parent, const char *dst_name, uint8_t dst_name_len)
+{
+    uint8_t *file_buf = (uint8_t *)0x230000;  // 4KB buffer
+    int8_t retcode;
+
+    struct EXT2DriverRequest rreq = {
+        .buf = file_buf,
+        .name = (char *)src_name,
+        .name_len = src_name_len,
+        .parent_inode = src_parent,
+        .buffer_size = 4096,
+        .is_directory = false
+    };
+
+    syscall(0, (uint32_t)&rreq, (uint32_t)&retcode, 0);
+    if (retcode != 0) return false;
+
+    uint32_t filesize = strlen((char *)file_buf);
+
+    struct EXT2DriverRequest wreq = {
+        .buf = file_buf,
+        .name = (char *)dst_name,
+        .name_len = dst_name_len,
+        .parent_inode = dst_parent,
+        .buffer_size = filesize,
+        .is_directory = false
+    };
+
+    syscall(2, (uint32_t)&wreq, (uint32_t)&retcode, 0);
+    return (retcode == 0);
+}
+
+// Recursive copy of directory
+static void cp_recursive(uint32_t src_dir_inode, uint32_t dst_dir_inode, int depth)
+{
+    if (depth > 8) return; 
+
+    uint32_t base_addr = 0x240000 + (depth * 0x1000);  // 4KB per level
+    char *dir_buf = (char *)base_addr;
+    char *name_buf = (char *)(base_addr + 0x800);
+
+    // Read source directory contents
+    struct EXT2DriverRequest req = {
+        .buf = dir_buf,
+        .name = ".",
+        .name_len = 1,
+        .parent_inode = src_dir_inode,
+        .buffer_size = 1024,
+        .is_directory = true
+    };
+
+    int8_t retcode;
+    syscall(1, (uint32_t)&req, (uint32_t)&retcode, 0);
+    if (retcode != 0) return;
+
+    uint32_t offset = 0;
+    while (offset < 1024)
+    {
+        struct EXT2DirectoryEntry *e = (struct EXT2DirectoryEntry *)(dir_buf + offset);
+        if (e->rec_len == 0) break;
+        if (e->inode == 0) {
+            offset += e->rec_len;
+            continue;
+        }
+
+        char *entry_name = (char *)(dir_buf + offset + sizeof(struct EXT2DirectoryEntry));
+        uint8_t name_len = e->name_len;
+
+        // Skip . and ..
+        if ((name_len == 1 && entry_name[0] == '.') ||
+            (name_len == 2 && entry_name[0] == '.' && entry_name[1] == '.')) {
+            offset += e->rec_len;
+            continue;
+        }
+
+        // Copy name
+        if (name_len > 31) name_len = 31;
+        memcpy(name_buf, entry_name, name_len);
+        name_buf[name_len] = '\0';
+
+        if (e->file_type == EXT2_FT_REG_FILE) {
+            // Copy file
+            cp_file(src_dir_inode, name_buf, name_len, dst_dir_inode, name_buf, name_len);
+        }
+        else if (e->file_type == EXT2_FT_DIR) {
+            // Create new directory in destination
+            struct EXT2DriverRequest mkdir_req = {
+                .buf = NULL,
+                .name = name_buf,
+                .name_len = name_len,
+                .parent_inode = dst_dir_inode,
+                .buffer_size = 0,
+                .is_directory = true
+            };
+            syscall(2, (uint32_t)&mkdir_req, (uint32_t)&retcode, 0);
+
+            if (retcode == 0) {
+                // Get the inode of newly created directory
+                char new_dir_buf[1024];
+                struct EXT2DriverRequest read_req = {
+                    .buf = new_dir_buf,
+                    .name = name_buf,
+                    .name_len = name_len,
+                    .parent_inode = dst_dir_inode,
+                    .buffer_size = sizeof(new_dir_buf),
+                    .is_directory = true
+                };
+                syscall(1, (uint32_t)&read_req, (uint32_t)&retcode, 0);
+                if (retcode == 0) {
+                    struct EXT2DirectoryEntry *dot = (void *)new_dir_buf;
+                    uint32_t new_dir_inode = dot->inode;
+                    // Recursively copy contents
+                    cp_recursive(e->inode, new_dir_inode, depth + 1);
+                }
+            }
         }
 
         offset += e->rec_len;
@@ -1051,75 +1202,125 @@ int main(void)
             }
             continue;
         }
-        else if (strcmp(argv[0], "cp") == 0)
-        {
-            if (argc < 3)
-            {
-                syscall(6, (uint32_t)"cp: usage: cp <src> <dst>\n",
-                        strlen("cp: usage: cp <src> <dst>\n"), 0x0F);
+        else if (strcmp(argv[0], "cp") == 0) {
+            if (argc < 3) {
+                syscall(6, (uint32_t)"cp: usage: cp [-r] <src> <dst>\n",
+                        strlen("cp: usage: cp [-r] <src> <dst>\n"), 0x0F);
                 continue;
             }
 
-            uint32_t src_parent, dst_parent;
-            char src_name[32], dst_name[32];
-            uint8_t src_name_len, dst_name_len;
+            bool recursive = false;
+            char *src_path = argv[1];
+            char *dst_path = argv[2];
 
-            if (!resolve_parent_and_name(argv[1], &src_parent, src_name, &src_name_len))
-            {
+            // Check for -r flag
+            if (argc >= 4 && strcmp(argv[1], "-r") == 0) {
+                recursive = true;
+                src_path = argv[2];
+                dst_path = argv[3];
+            }
+
+            uint32_t src_parent;
+            char src_name[32];
+            uint8_t src_name_len;
+
+            if (!resolve_parent_and_name(src_path, &src_parent, src_name, &src_name_len)) {
                 syscall(6, (uint32_t)"cp: source not found\n",
                         strlen("cp: source not found\n"), 0x0F);
                 continue;
             }
-            if (!resolve_parent_and_name(argv[2], &dst_parent, dst_name, &dst_name_len))
-            {
-                syscall(6, (uint32_t)"cp: invalid destination\n",
-                        strlen("cp: invalid destination\n"), 0x0F);
-                continue;
+
+            // Check if destination is an existing directory
+            uint32_t dst_dir_inode = 0;
+            uint32_t dst_parent;
+            char dst_name[32];
+            uint8_t dst_name_len;
+
+            if (resolve_dir_inode(dst_path, &dst_dir_inode)) {
+                // Destination is a directory - copy into it with same name
+                dst_parent = dst_dir_inode;
+                dst_name_len = src_name_len;
+                memcpy(dst_name, src_name, src_name_len);
+                dst_name[src_name_len] = '\0';
+            } else {
+                // Destination is a new name
+                if (!resolve_parent_and_name(dst_path, &dst_parent, dst_name, &dst_name_len)) {
+                    syscall(6, (uint32_t)"cp: invalid destination\n",
+                            strlen("cp: invalid destination\n"), 0x0F);
+                    continue;
+                }
             }
 
-            uint8_t *file_buf = (uint8_t *)0x230000; // 4KB buffer at fixed address
             int8_t retcode;
 
-            struct EXT2DriverRequest rreq = {
-                .buf = file_buf,
-                .name = src_name,
-                .name_len = src_name_len,
-                .parent_inode = src_parent,
-                .buffer_size = 4096,
-                .is_directory = false};
+            if (recursive) {
+                // Check if source is a directory
+                char dir_buf[1024];
+                struct EXT2DriverRequest check_req = {
+                    .buf = dir_buf,
+                    .name = src_name,
+                    .name_len = src_name_len,
+                    .parent_inode = src_parent,
+                    .buffer_size = sizeof(dir_buf),
+                    .is_directory = true
+                };
+                syscall(1, (uint32_t)&check_req, (uint32_t)&retcode, 0);
 
-            syscall(0, (uint32_t)&rreq, (uint32_t)&retcode, 0);
-            if (retcode != 0)
-            {
-                syscall(6, (uint32_t)"cp: source not found or not a file\n",
-                        strlen("cp: source not found or not a file\n"), 0x0F);
-                continue;
-            }
+                if (retcode == 0) {
+                    // Source is a directory - get its inode
+                    struct EXT2DirectoryEntry *dot = (void *)dir_buf;
+                    uint32_t src_dir_inode = dot->inode;
 
-            uint32_t filesize = strlen((char *)file_buf);
+                    // Create destination directory
+                    struct EXT2DriverRequest mkdir_req = {
+                        .buf = NULL,
+                        .name = dst_name,
+                        .name_len = dst_name_len,
+                        .parent_inode = dst_parent,
+                        .buffer_size = 0,
+                        .is_directory = true
+                    };
+                    syscall(2, (uint32_t)&mkdir_req, (uint32_t)&retcode, 0);
 
-            struct EXT2DriverRequest wreq = {
-                .buf = file_buf,
-                .name = dst_name,
-                .name_len = dst_name_len,
-                .parent_inode = dst_parent,
-                .buffer_size = filesize,
-                .is_directory = false};
+                    if (retcode != 0) {
+                        syscall(6, (uint32_t)"cp: failed to create destination directory\n",
+                                strlen("cp: failed to create destination directory\n"), 0x0F);
+                        continue;
+                    }
 
-            syscall(2, (uint32_t)&wreq, (uint32_t)&retcode, 0);
-            if (retcode != 0)
-            {
-                syscall(6, (uint32_t)"cp: write failed\n",
-                        strlen("cp: write failed\n"), 0x0F);
-                continue;
+                    // Get new directory inode
+                    struct EXT2DriverRequest read_req = {
+                        .buf = dir_buf,
+                        .name = dst_name,
+                        .name_len = dst_name_len,
+                        .parent_inode = dst_parent,
+                        .buffer_size = sizeof(dir_buf),
+                        .is_directory = true
+                    };
+                    syscall(1, (uint32_t)&read_req, (uint32_t)&retcode, 0);
+
+                    if (retcode == 0) {
+                        struct EXT2DirectoryEntry *new_dot = (void *)dir_buf;
+                        uint32_t new_dir_inode = new_dot->inode;
+                        // Recursively copy contents
+                        cp_recursive(src_dir_inode, new_dir_inode, 0);
+                    }
+                } else {
+                    syscall(6, (uint32_t)"cp: source is not a directory (remove -r)\n",
+                            strlen("cp: source is not a directory (remove -r)\n"), 0x0F);
+                }
+            } else {
+                // Copy single file
+                if (!cp_file(src_parent, src_name, src_name_len, dst_parent, dst_name, dst_name_len)) {
+                    syscall(6, (uint32_t)"cp: failed (is source a directory? use -r)\n",
+                            strlen("cp: failed (is source a directory? use -r)\n"), 0x0F);
+                }
             }
 
             continue;
         }
-        else if (strcmp(argv[0], "mv") == 0)
-        {
-            if (argc < 3)
-            {
+        else if (strcmp(argv[0], "mv") == 0) {
+            if (argc < 3) {
                 syscall(6, (uint32_t)"mv: usage: mv <src> <dst>\n",
                         strlen("mv: usage: mv <src> <dst>\n"), 0x0F);
                 continue;
@@ -1183,60 +1384,49 @@ int main(void)
             {
                 syscall(6, (uint32_t)"mv: no space in destination directory\n",
                         strlen("mv: no space in destination directory\n"), 0x0F);
-            }
-            else
-            {
+            } else {
                 syscall(6, (uint32_t)"mv: error\n",
                         strlen("mv: error\n"), 0x0F);
             }
             continue;
         }
-        else if (strcmp(argv[0], "clock") == 0)
-        {
+        else if (strcmp(argv[0], "clock") == 0) {
             syscall(11, 0, 0, 0); // start clock drawing in kernel scheduler
             syscall(6, (uint32_t)"Clock started (bottom-right)\n",
                     strlen("Clock started (bottom-right)\n"), 0x0F);
             continue;
         }
-        else if (strcmp(argv[0], "ps") == 0)
-        {
+        else if (strcmp(argv[0], "ps") == 0) {
             syscall(6, (uint32_t)"PID  NAME   STATE\n", strlen("PID  NAME   STATE\n"), 0x0F);
             syscall(6, (uint32_t)"1    shell  RUNNING\n", strlen("1    shell  RUNNING\n"), 0x0F);
             bool clock_on = false;
             syscall(13, 0, (uint32_t)&clock_on, 0);
-            if (clock_on)
-            {
+            if (clock_on) {
                 syscall(6, (uint32_t)"2    clock  RUNNING\n", strlen("2    clock  RUNNING\n"), 0x0F);
             }
             continue;
         }
-        else if (strcmp(argv[0], "kill") == 0)
-        {
-            if (argc < 2)
-            {
+        else if (strcmp(argv[0], "kill") == 0) {
+            if (argc < 2) {
                 syscall(6, (uint32_t)"kill: usage: kill <pid>\n",
                         strlen("kill: usage: kill <pid>\n"), 0x0F);
                 continue;
             }
             int pid;
-            if (!parse_int(argv[1], &pid) || pid <= 0)
-            {
+            if (!parse_int(argv[1], &pid) || pid <= 0) {
                 syscall(6, (uint32_t)"kill: invalid pid\n",
                         strlen("kill: invalid pid\n"), 0x0F);
                 continue;
             }
-            if (pid == PID_SHELL)
-            {
+            if (pid == PID_SHELL) {
                 syscall(6, (uint32_t)"kill: cannot terminate shell\n",
                         strlen("kill: cannot terminate shell\n"), 0x0F);
                 continue;
             }
-            if (pid == PID_CLOCK)
-            {
+            if (pid == PID_CLOCK) {
                 bool clock_on = false;
                 syscall(13, 0, (uint32_t)&clock_on, 0);
-                if (!clock_on)
-                {
+                if (!clock_on) {
                     syscall(6, (uint32_t)"kill: process not found\n",
                             strlen("kill: process not found\n"), 0x0F);
                     continue;
@@ -1250,60 +1440,44 @@ int main(void)
                     strlen("kill: process not found\n"), 0x0F);
             continue;
         }
-        else if (strcmp(argv[0], "exec") == 0)
-        {
-            if (argc < 2)
-            {
+        else if (strcmp(argv[0], "exec") == 0) {
+            if (argc < 2) {
                 syscall(6, (uint32_t)"exec: usage: exec <program>\n",
                         strlen("exec: usage: exec <program>\n"), 0x0F);
-            }
-            else
-            {
+            } else {
                 exec_external(argv[1]);
             }
             continue;
         }
-        else if (strcmp(argv[0], "setenv") == 0)
-        {
-            if (argc < 3)
-            {
+        else if (strcmp(argv[0], "setenv") == 0) {
+            if (argc < 3) {
                 syscall(6, (uint32_t)"setenv: usage: setenv KEY VALUE\n",
                         strlen("setenv: usage: setenv KEY VALUE\n"), 0x0F);
-            }
-            else
-            {
+            } else {
                 env_set(argv[1], argv[2]);
             }
             continue;
         }
-        else if (strcmp(argv[0], "getenv") == 0)
-        {
-            if (argc < 2)
-            {
+        else if (strcmp(argv[0], "getenv") == 0) {
+            if (argc < 2) {
                 syscall(6, (uint32_t)"getenv: usage: getenv KEY\n",
                         strlen("getenv: usage: getenv KEY\n"), 0x0F);
-            }
-            else
-            {
+            } else {
                 const char *val = env_get(argv[1]);
-                if (val)
-                {
+                if (val) {
                     syscall(6, (uint32_t)val, strlen(val), 0x0F);
                     syscall(6, (uint32_t)"\n", 1, 0x0F);
-                }
-                else
-                {
+                } else {
                     syscall(6, (uint32_t)"(not set)\n", strlen("(not set)\n"), 0x0F);
                 }
             }
             continue;
         }
-        else if (strcmp(argv[0], "printenv") == 0)
-        {
+        else if (strcmp(argv[0], "printenv") == 0) {
             env_print_all();
             continue;
         }
-
+        
         else
         {
             syscall(6, (uint32_t)"Unknown command: ", 17, 0x0F);
