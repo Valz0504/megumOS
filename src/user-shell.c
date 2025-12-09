@@ -114,18 +114,23 @@ static bool resolve_and_change_dir(const char *path_input)
     if (token[0] == '/')
         token++; // skip leading slash
 
-    while (*token) {
+    while (*token)
+    {
         // Find next separator
         char *slash = token;
-        while (*slash && *slash != '/') slash++;
+        while (*slash && *slash != '/')
+            slash++;
         bool last = (*slash == '\0');
         char saved = *slash;
         *slash = '\0';
 
         // Skip empty / .
-        if (token[0] == '\0' || (token[0] == '.' && token[1] == '\0')) {
+        if (token[0] == '\0' || (token[0] == '.' && token[1] == '\0'))
+        {
             // nothing
-        } else if (token[0] == '.' && token[1] == '.' && token[2] == '\0') {
+        }
+        else if (token[0] == '.' && token[1] == '.' && token[2] == '\0')
+        {
             // cd ..
             char bufp[1024];
             struct EXT2DriverRequest reqp = {
@@ -134,26 +139,30 @@ static bool resolve_and_change_dir(const char *path_input)
                 .name_len = 1,
                 .parent_inode = inode,
                 .buffer_size = sizeof(bufp),
-                .is_directory = true
-            };
+                .is_directory = true};
             int8_t retp;
             syscall(1, (uint32_t)&reqp, (uint32_t)&retp, 0);
-            if (retp != 0) return false;
+            if (retp != 0)
+                return false;
             struct EXT2DirectoryEntry *dot = (void *)bufp;
             struct EXT2DirectoryEntry *dotdot = (void *)((uint8_t *)dot + dot->rec_len);
             inode = dotdot->inode;
 
             // pop from path string
-            if (strcmp(new_path, "/") != 0) {
+            if (strcmp(new_path, "/") != 0)
+            {
                 char *last_slash = strrchr(new_path, '/');
-                if (last_slash) {
+                if (last_slash)
+                {
                     if (last_slash == new_path)
                         new_path[1] = '\0';
                     else
                         *last_slash = '\0';
                 }
             }
-        } else {
+        }
+        else
+        {
             // normal component: request directory and read its inode
             char dirbuf[1024];
             struct EXT2DriverRequest req = {
@@ -162,16 +171,17 @@ static bool resolve_and_change_dir(const char *path_input)
                 .name_len = strlen(token),
                 .parent_inode = inode,
                 .buffer_size = sizeof(dirbuf),
-                .is_directory = true
-            };
+                .is_directory = true};
             int8_t ret;
             syscall(1, (uint32_t)&req, (uint32_t)&ret, 0);
-            if (ret != 0) return false;
+            if (ret != 0)
+                return false;
             struct EXT2DirectoryEntry *dot = (void *)dirbuf;
             inode = dot->inode;
 
             // append to path string
-            if (strcmp(new_path, "/") != 0) {
+            if (strcmp(new_path, "/") != 0)
+            {
                 if (strlen(new_path) + 1 >= sizeof(new_path))
                     return false;
                 strcat(new_path, "/");
@@ -182,7 +192,8 @@ static bool resolve_and_change_dir(const char *path_input)
         }
 
         *slash = saved;
-        if (last) break;
+        if (last)
+            break;
         token = slash + 1;
     }
 
@@ -196,8 +207,10 @@ static bool resolve_and_change_dir(const char *path_input)
 static bool resolve_parent_and_name(const char *path_input, uint32_t *parent_inode_out,
                                     char *name_out, uint8_t *name_len_out)
 {
-    if (!path_input || !parent_inode_out || !name_out || !name_len_out) return false;
-    if (strcmp(path_input, "/") == 0) return false; // cannot use root as name
+    if (!path_input || !parent_inode_out || !name_out || !name_len_out)
+        return false;
+    if (strcmp(path_input, "/") == 0)
+        return false; // cannot use root as name
 
     uint32_t inode = (path_input[0] == '/') ? 1 : current_directory;
 
@@ -219,16 +232,21 @@ static bool resolve_parent_and_name(const char *path_input, uint32_t *parent_ino
     char *last_comp = NULL;
     uint8_t last_len = 0;
 
-    while (true) {
+    while (true)
+    {
         char *slash = token;
-        while (*slash && *slash != '/') slash++;
+        while (*slash && *slash != '/')
+            slash++;
         bool last = (*slash == '\0');
         char saved = *slash;
         *slash = '\0';
 
-        if (token[0] == '\0' || (token[0] == '.' && token[1] == '\0')) {
+        if (token[0] == '\0' || (token[0] == '.' && token[1] == '\0'))
+        {
             // skip
-        } else if (token[0] == '.' && token[1] == '.' && token[2] == '\0') {
+        }
+        else if (token[0] == '.' && token[1] == '.' && token[2] == '\0')
+        {
             // go up
             char bufp[1024];
             struct EXT2DriverRequest reqp = {
@@ -237,19 +255,24 @@ static bool resolve_parent_and_name(const char *path_input, uint32_t *parent_ino
                 .name_len = 1,
                 .parent_inode = inode,
                 .buffer_size = sizeof(bufp),
-                .is_directory = true
-            };
+                .is_directory = true};
             int8_t retp;
             syscall(1, (uint32_t)&reqp, (uint32_t)&retp, 0);
-            if (retp != 0) return false;
+            if (retp != 0)
+                return false;
             struct EXT2DirectoryEntry *dot = (void *)bufp;
             struct EXT2DirectoryEntry *dotdot = (void *)((uint8_t *)dot + dot->rec_len);
             inode = dotdot->inode;
-        } else {
-            if (last) {
+        }
+        else
+        {
+            if (last)
+            {
                 last_comp = token;
                 last_len = (uint8_t)strlen(token);
-            } else {
+            }
+            else
+            {
                 char dirbuf[1024];
                 struct EXT2DriverRequest req = {
                     .buf = dirbuf,
@@ -257,22 +280,24 @@ static bool resolve_parent_and_name(const char *path_input, uint32_t *parent_ino
                     .name_len = strlen(token),
                     .parent_inode = inode,
                     .buffer_size = sizeof(dirbuf),
-                    .is_directory = true
-                };
+                    .is_directory = true};
                 int8_t ret;
                 syscall(1, (uint32_t)&req, (uint32_t)&ret, 0);
-                if (ret != 0) return false;
+                if (ret != 0)
+                    return false;
                 struct EXT2DirectoryEntry *dot = (void *)dirbuf;
                 inode = dot->inode;
             }
         }
 
         *slash = saved;
-        if (last) break;
+        if (last)
+            break;
         token = slash + 1;
     }
 
-    if (last_comp == NULL || last_len == 0 || last_len > 31) return false;
+    if (last_comp == NULL || last_len == 0 || last_len > 31)
+        return false;
 
     *parent_inode_out = inode;
     *name_len_out = last_len;
@@ -404,28 +429,29 @@ void find_recursive(uint32_t dir_inode, const char *path, const char *target, in
     
     uint32_t base_addr = 0x220000 + (depth * 0x800);  // 2KB per level
     char *find_buf = (char *)base_addr;
-    char *find_name_buf = (char *)(base_addr + 0x400);  // +1KB
-    char *find_path_buf = (char *)(base_addr + 0x600);  // +1.5KB
-    
+    char *find_name_buf = (char *)(base_addr + 0x400); // +1KB
+    char *find_path_buf = (char *)(base_addr + 0x600); // +1.5KB
+
     struct EXT2DriverRequest req = {
         .buf = (void *)find_buf,
         .name = ".",
         .name_len = 1,
         .parent_inode = dir_inode,
         .buffer_size = 1024,
-        .is_directory = true
-    };
+        .is_directory = true};
 
     int8_t retcode;
     syscall(1, (uint32_t)&req, (uint32_t)&retcode, 0);
-    if (retcode != 0) return;
+    if (retcode != 0)
+        return;
 
     uint32_t offset = 0;
-    
+
     while (offset < 1024)
     {
         struct EXT2DirectoryEntry *e = (struct EXT2DirectoryEntry *)(find_buf + offset);
-        if (e->rec_len == 0) break;
+        if (e->rec_len == 0)
+            break;
         if (e->inode == 0)
         {
             offset += e->rec_len;
@@ -433,10 +459,11 @@ void find_recursive(uint32_t dir_inode, const char *path, const char *target, in
         }
 
         char *name = (char *)(find_buf + offset + sizeof(struct EXT2DirectoryEntry));
-        
+
         // Copy name safely
         uint32_t name_len = e->name_len;
-        if (name_len > 200) name_len = 200;
+        if (name_len > 200)
+            name_len = 200;
         memcpy(find_name_buf, name, name_len);
         find_name_buf[name_len] = '\0';
 
@@ -450,19 +477,21 @@ void find_recursive(uint32_t dir_inode, const char *path, const char *target, in
 
         // Build full path
         uint32_t path_len = strlen(path);
-        if (path_len > 200) {
+        if (path_len > 200)
+        {
             offset += e->rec_len;
             continue;
         }
-        
+
         memcpy(find_path_buf, path, path_len);
         find_path_buf[path_len] = '\0';
-        
-        if (path_len > 0 && find_path_buf[path_len-1] != '/') {
+
+        if (path_len > 0 && find_path_buf[path_len - 1] != '/')
+        {
             find_path_buf[path_len] = '/';
-            find_path_buf[path_len+1] = '\0';
+            find_path_buf[path_len + 1] = '\0';
         }
-        
+
         strcat(find_path_buf, find_name_buf);
 
         // print jika cocok
@@ -625,6 +654,8 @@ int main(void)
         while (true)
         {
             syscall(4, (uint32_t)&buf, 0, 0);
+
+            // Handle backspace
             if (buf == '\b')
             {
                 if (idx > 0)
@@ -634,12 +665,17 @@ int main(void)
                 }
                 continue;
             }
-            syscall(5, (uint32_t)buf, 0xF, 0);
 
+            // Handle newline - print it but don't add to buffer
             if (buf == '\n')
+            {
+                syscall(5, (uint32_t)buf, 0xF, 0);
                 break;
+            }
+
             if (buf == '\0')
                 break;
+            syscall(5, (uint32_t)buf, 0xF, 0);
 
             if (idx < MAX_CMD_LEN - 1)
             {
@@ -657,11 +693,29 @@ int main(void)
                 p++;
             if (!*p)
                 break;
-            argv[argc++] = p;
-            while (*p && *p != ' ')
-                p++;
-            if (*p)
-                *p++ = '\0';
+
+            // Check for quotes
+            if (*p == '"' || *p == '\'')
+            {
+                char quote = *p;
+                p++; // skip opening quote
+                argv[argc++] = p;
+                // Find closing quote
+                while (*p && *p != quote)
+                    p++;
+                if (*p == quote)
+                {
+                    *p++ = '\0'; // replace closing quote with null
+                }
+            }
+            else
+            {
+                argv[argc++] = p;
+                while (*p && *p != ' ')
+                    p++;
+                if (*p)
+                    *p++ = '\0';
+            }
         }
 
         if (argc == 0)
@@ -672,14 +726,81 @@ int main(void)
 
         if (strcmp(argv[0], "echo") == 0)
         {
+            // Cek apakah ada redirection
+            bool has_redirect = false;
+            char *redirect_file = NULL;
+            int content_end = argc;
+
+            // Cari operator >
             for (int i = 1; i < argc; i++)
             {
-                size_t len = strlen(argv[i]);
-                syscall(6, (uint32_t)argv[i], (uint32_t)len, 0x0F);
-                if (i + 1 < argc)
-                    syscall(6, (uint32_t)" ", 1, 0x0F);
+                if (strcmp(argv[i], ">") == 0)
+                {
+                    has_redirect = true;
+                    if (i + 1 < argc)
+                    {
+                        redirect_file = argv[i + 1];
+                        content_end = i;
+                    }
+                    break;
+                }
             }
-            syscall(5, (uint32_t)'\n', 0x0F, 0);
+
+            if (has_redirect && redirect_file)
+            {
+                char content[1024];
+                content[0] = '\0';
+                for (int i = 1; i < content_end; i++)
+                {
+                    strcat(content, argv[i]);
+                    if (i + 1 < content_end)
+                        strcat(content, " ");
+                }
+                strcat(content, "\n");
+
+                uint32_t parent_inode;
+                char name[32];
+                uint8_t name_len;
+                if (!resolve_parent_and_name(redirect_file, &parent_inode, name, &name_len))
+                {
+                    syscall(6, (uint32_t)"echo: invalid path\n", strlen("echo: invalid path\n"), 0x0F);
+                    continue;
+                }
+
+                // Hapus file lama jika ada (untuk memastikan overwrite)
+                struct EXT2DriverRequest del_req = {
+                    .buf = NULL,
+                    .name = name,
+                    .name_len = name_len,
+                    .parent_inode = parent_inode,
+                    .buffer_size = 0,
+                    .is_directory = false};
+                uint32_t del_ret;
+                syscall(3, (uint32_t)&del_req, (uint32_t)&del_ret, 0); // syscall delete (ignore error)
+
+                // Mode overwrite - tulis file baru
+                struct EXT2DriverRequest write_req = {
+                    .buf = content,
+                    .name = name,
+                    .name_len = name_len,
+                    .parent_inode = parent_inode,
+                    .buffer_size = (uint32_t)strlen(content),
+                    .is_directory = false};
+                uint32_t ret = 0;
+                syscall(2, (uint32_t)&write_req, (uint32_t)&ret, 0);
+            }
+            else
+            {
+                // Mode normal: print ke stdout
+                for (int i = 1; i < argc; i++)
+                {
+                    size_t len = strlen(argv[i]);
+                    syscall(6, (uint32_t)argv[i], (uint32_t)len, 0x0F);
+                    if (i + 1 < argc)
+                        syscall(6, (uint32_t)" ", 1, 0x0F);
+                }
+                syscall(5, (uint32_t)'\n', 0x0F, 0);
+            }
             continue;
         }
         else if (strcmp(argv[0], "mkdir") == 0)
@@ -692,7 +813,8 @@ int main(void)
             uint32_t parent_inode;
             char name[32];
             uint8_t name_len;
-            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len)) {
+            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len))
+            {
                 syscall(6, (uint32_t)"mkdir: invalid path\n", strlen("mkdir: invalid path\n"), 0xF);
                 continue;
             }
@@ -705,13 +827,21 @@ int main(void)
                 .is_directory = true};
             uint32_t retcode = 0;
             syscall(2, (uint32_t)&req, (uint32_t)&retcode, 0);
+
+            if (retcode != 0)
+            {
+                syscall(6, (uint32_t)"mkdir: cannot create directory (already exists or error)\n",
+                        strlen("mkdir: cannot create directory (already exists or error)\n"), 0xF);
+            }
             continue;
         }
         else if (strcmp(argv[0], "ls") == 0)
         {
             uint32_t target_inode = current_directory;
-            if (argc >= 2) {
-                if (!resolve_dir_inode(argv[1], &target_inode)) {
+            if (argc >= 2)
+            {
+                if (!resolve_dir_inode(argv[1], &target_inode))
+                {
                     syscall(6, (uint32_t)"ls: directory not found\n",
                             strlen("ls: directory not found\n"), 0x0F);
                     continue;
@@ -775,23 +905,103 @@ int main(void)
         }
         else if (strcmp(argv[0], "cd") == 0)
         {
-            if (argc < 2) {
-                syscall(6,(uint32_t)"cd: missing argument\n",23,0x0F);
+            if (argc < 2)
+            {
+                syscall(6, (uint32_t)"cd: missing argument\n", 23, 0x0F);
                 continue;
             }
 
-            if (!resolve_and_change_dir(argv[1])) {
-                syscall(6,(uint32_t)"cd: directory not found\n",
-                        strlen("cd: directory not found\n"),0x0F);
+            if (!resolve_and_change_dir(argv[1]))
+            {
+                syscall(6, (uint32_t)"cd: directory not found\n",
+                        strlen("cd: directory not found\n"), 0x0F);
             }
             continue;
         }
-        else if (strcmp(argv[0], "cat") == 0 && argc >= 2)
+        else if (strcmp(argv[0], "cat") == 0)
         {
+            if (argc < 2)
+            {
+                syscall(6, (uint32_t)"cat: usage: cat <file> or cat > <file>\n",
+                        strlen("cat: usage: cat <file> or cat > <file>\n"), 0x0F);
+                continue;
+            }
+            if (argc >= 3 && strcmp(argv[1], ">") == 0)
+            {
+                char *target_file = argv[2];
+                char input_buffer[2048];
+                int buf_idx = 0;
+
+                syscall(6, (uint32_t)"(Type text, press Ctrl+D on new line to finish)\n",
+                        strlen("(Type text, press Ctrl+D on new line to finish)\n"), 0x0F);
+                while (buf_idx < 2047)
+                {
+                    char ch;
+                    syscall(4, (uint32_t)&ch, 0, 0);
+                    if (ch == 0x04)
+                    {
+                        break;
+                    }
+                    if (ch == '\b')
+                    {
+                        if (buf_idx > 0)
+                        {
+                            if (input_buffer[buf_idx - 1] != '\n')
+                            {
+                                syscall(5, (uint32_t)ch, 0x0F, 0);
+                                buf_idx--;
+                            }
+                        }
+                        continue;
+                    }
+                    if (ch == '\n')
+                    {
+                        syscall(5, (uint32_t)ch, 0x0F, 0);
+                        input_buffer[buf_idx++] = ch;
+                        continue;
+                    }
+                    syscall(5, (uint32_t)ch, 0x0F, 0);
+                    input_buffer[buf_idx++] = ch;
+                }
+                input_buffer[buf_idx] = '\0';
+
+                // Tulis ke file
+                uint32_t parent_inode;
+                char name[32];
+                uint8_t name_len;
+                if (!resolve_parent_and_name(target_file, &parent_inode, name, &name_len))
+                {
+                    syscall(6, (uint32_t)"cat: invalid path\n", strlen("cat: invalid path\n"), 0x0F);
+                    continue;
+                }
+
+                struct EXT2DriverRequest write_req = {
+                    .buf = input_buffer,
+                    .name = name,
+                    .name_len = name_len,
+                    .parent_inode = parent_inode,
+                    .buffer_size = (uint32_t)strlen(input_buffer),
+                    .is_directory = false};
+                uint32_t ret = 0;
+                syscall(2, (uint32_t)&write_req, (uint32_t)&ret, 0);
+
+                if ((int32_t)ret == 0)
+                {
+                    syscall(6, (uint32_t)"\n", 1, 0x0F);
+                }
+                else
+                {
+                    syscall(6, (uint32_t)"cat: write failed\n", strlen("cat: write failed\n"), 0x0F);
+                }
+                continue;
+            }
+
+            // Mode read: cat file.txt
             uint32_t parent_inode;
             char name[32];
             uint8_t name_len;
-            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len)) {
+            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len))
+            {
                 syscall(6, (uint32_t)"cat: file not found\n", 21, 0x0F);
                 continue;
             }
@@ -811,7 +1021,10 @@ int main(void)
                 char *content = (char *)req.buf;
                 uint32_t len = strlen(content);
                 syscall(6, (uint32_t)content, len, 0x0F);
-                syscall(5, (uint32_t)'\n', 0x0F, 0);
+                if (len == 0 || content[len - 1] != '\n')
+                {
+                    syscall(5, (uint32_t)'\n', 0x0F, 0);
+                }
             }
             else
             {
@@ -821,7 +1034,8 @@ int main(void)
         }
         else if (strcmp(argv[0], "grep") == 0)
         {
-            if (argc < 3) {
+            if (argc < 3)
+            {
                 syscall(6, (uint32_t)"grep: usage: grep <pattern> <file>\n",
                         strlen("grep: usage: grep <pattern> <file>\n"), 0x0F);
                 continue;
@@ -829,7 +1043,8 @@ int main(void)
 
             const char *pattern = argv[1];
             uint32_t pattern_len = strlen(pattern);
-            if (pattern_len == 0) {
+            if (pattern_len == 0)
+            {
                 syscall(6, (uint32_t)"grep: empty pattern\n",
                         strlen("grep: empty pattern\n"), 0x0F);
                 continue;
@@ -838,7 +1053,8 @@ int main(void)
             uint32_t parent_inode;
             char name[32];
             uint8_t name_len;
-            if (!resolve_parent_and_name(argv[2], &parent_inode, name, &name_len)) {
+            if (!resolve_parent_and_name(argv[2], &parent_inode, name, &name_len))
+            {
                 syscall(6, (uint32_t)"grep: file not found\n",
                         strlen("grep: file not found\n"), 0x0F);
                 continue;
@@ -854,7 +1070,8 @@ int main(void)
 
             int8_t retcode;
             syscall(0, (uint32_t)&req, (uint32_t)&retcode, 0);
-            if (retcode != 0) {
+            if (retcode != 0)
+            {
                 syscall(6, (uint32_t)"grep: file not found\n",
                         strlen("grep: file not found\n"), 0x0F);
                 continue;
@@ -864,100 +1081,66 @@ int main(void)
             uint32_t len = strlen(content);
             char *line_start = content;
 
-            for (uint32_t i = 0; i <= len; i++) {
-                if (content[i] == '\n' || content[i] == '\0') {
+            for (uint32_t i = 0; i <= len; i++)
+            {
+                if (content[i] == '\n' || content[i] == '\0')
+                {
                     char saved = content[i];
                     content[i] = '\0';
-                    if (strstr(line_start, pattern) != NULL) {
+                    if (strstr(line_start, pattern) != NULL)
+                    {
                         syscall(6, (uint32_t)line_start, strlen(line_start), 0x0F);
                         syscall(6, (uint32_t)"\n", 1, 0x0F);
                     }
                     content[i] = saved;
-                    if (saved == '\0') break;
+                    if (saved == '\0')
+                        break;
                     line_start = content + i + 1;
                 }
             }
             continue;
         }
-
-        else if (strcmp(argv[0], "write") == 0) 
+        else if (strcmp(argv[0], "clear") == 0)
         {
-            if (argc < 3)
-            {
-                syscall(6, (uint32_t)"write: missing arguments\n", 26, 0x0F);
-                continue;
-            }
-
-            uint32_t parent_inode;
-            char name[32];
-            uint8_t name_len;
-            if (!resolve_parent_and_name(argv[1], &parent_inode, name, &name_len)) {
-                syscall(6, (uint32_t)"write: invalid path\n", strlen("write: invalid path\n"), 0x0F);
-                continue;
-            }
-
-            char content[1024];
-            content[0] = '\0';
-
-            for (int i = 2; i < argc; i++)
-            {
-                strcat(content, argv[i]);
-                if (i + 1 < argc)
-                    strcat(content, " ");
-            }
-
-            struct EXT2DriverRequest req = {
-                .buf = content,
-                .name = name,
-                .name_len = name_len,
-                .parent_inode = parent_inode,
-                .buffer_size = (uint32_t)strlen(content),
-                .is_directory = false};
-
-            uint32_t ret = 0;
-            syscall(2, (uint32_t)&req, (uint32_t)&ret, 0); // syscall write
-
-            if ((int32_t)ret == 0)
-                syscall(6, (uint32_t)"File written.\n", 14, 0x0F);
-            else
-                syscall(6, (uint32_t)"write: failed.\n", 15, 0x0F);
-
-            continue;
-        }
-        else if (strcmp(argv[0], "clear") == 0) {
             syscall(8, 0, 0, 0);
             continue;
         }
         else if (strcmp(argv[0], "rm") == 0)
         {
-            if (argc < 2) {
-                syscall(6,(uint32_t)"rm: usage: rm [-r] <name>\n",
-                        strlen("rm: usage: rm [-r] <name>\n"),0x0F);
+            if (argc < 2)
+            {
+                syscall(6, (uint32_t)"rm: usage: rm [-r] <name>\n",
+                        strlen("rm: usage: rm [-r] <name>\n"), 0x0F);
                 continue;
             }
 
             bool recursive = false;
             char *target_path = NULL;
 
-            if (argc >= 3 && strcmp(argv[1], "-r") == 0) {
+            if (argc >= 3 && strcmp(argv[1], "-r") == 0)
+            {
                 recursive = true;
                 target_path = argv[2];
-            } else {
+            }
+            else
+            {
                 target_path = argv[1];
             }
 
-            if (target_path == NULL) {
-                syscall(6,(uint32_t)"rm: missing name\n",
-                        strlen("rm: missing name\n"),0x0F);
+            if (target_path == NULL)
+            {
+                syscall(6, (uint32_t)"rm: missing name\n",
+                        strlen("rm: missing name\n"), 0x0F);
                 continue;
             }
 
             uint32_t parent_inode;
             char name[32];
             uint8_t name_len;
-            if (!resolve_parent_and_name(target_path, &parent_inode, name, &name_len)) {
-                syscall(6,(uint32_t)"rm: not found\n",
-                        strlen("rm: not found\n"),0x0F);
+            if (!resolve_parent_and_name(target_path, &parent_inode, name, &name_len))
+            {
+                syscall(6, (uint32_t)"rm: not found\n",
+                        strlen("rm: not found\n"), 0x0F);
                 continue;
             }
 
@@ -967,46 +1150,54 @@ int main(void)
                 .name_len = name_len,
                 .parent_inode = parent_inode,
                 .buffer_size = 0,
-                .is_directory = recursive ? true : false   // dipakai sebagai "recursive" flag
+                .is_directory = recursive ? true : false // dipakai sebagai "recursive" flag
             };
 
             uint32_t retcode;
-            syscall(3,(uint32_t)&req,(uint32_t)&retcode,0);
+            syscall(3, (uint32_t)&req, (uint32_t)&retcode, 0);
 
-            if (retcode == 0) {
+            if (retcode == 0)
+            {
                 // sukses, diam aja
             }
-            else if (retcode == 1) {
-                syscall(6,(uint32_t)"rm: not found\n",
-                        strlen("rm: not found\n"),0x0F);
+            else if (retcode == 1)
+            {
+                syscall(6, (uint32_t)"rm: not found\n",
+                        strlen("rm: not found\n"), 0x0F);
             }
-            else if (retcode == 2) {
+            else if (retcode == 2)
+            {
                 // mode non-recursive, directory not empty
-                syscall(6,(uint32_t)"rm: directory not empty (use rm -r)\n",
-                        strlen("rm: directory not empty (use rm -r)\n"),0x0F);
+                syscall(6, (uint32_t)"rm: directory not empty (use rm -r)\n",
+                        strlen("rm: directory not empty (use rm -r)\n"), 0x0F);
             }
-            else {
-                syscall(6,(uint32_t)"rm: error\n",
-                        strlen("rm: error\n"),0x0F);
+            else
+            {
+                syscall(6, (uint32_t)"rm: error\n",
+                        strlen("rm: error\n"), 0x0F);
             }
 
             continue;
         }
         else if (strcmp(argv[0], "find") == 0)
         {
-            if (argc < 2) {
-                syscall(6,(uint32_t)"find: missing name\n",
-                        strlen("find: missing name\n"),0x0F);
+            if (argc < 2)
+            {
+                syscall(6, (uint32_t)"find: missing name\n",
+                        strlen("find: missing name\n"), 0x0F);
                 continue;
             }
             uint32_t start_inode = current_directory;
             char start_path[32];
             strcpy(start_path, current_directory_name);
-            if (argc >= 3 && strcmp(argv[1], "/") == 0) {
+            if (argc >= 3 && strcmp(argv[1], "/") == 0)
+            {
                 start_inode = 1;
                 strcpy(start_path, "/");
                 find_recursive(start_inode, start_path, argv[2], 0);
-            } else {
+            }
+            else
+            {
                 find_recursive(start_inode, start_path, argv[1], 0);
             }
             continue;
@@ -1139,20 +1330,25 @@ int main(void)
             char src_name[32], dst_name[32];
             uint8_t src_name_len, dst_name_len;
 
-            if (!resolve_parent_and_name(argv[1], &src_parent, src_name, &src_name_len)) {
+            if (!resolve_parent_and_name(argv[1], &src_parent, src_name, &src_name_len))
+            {
                 syscall(6, (uint32_t)"mv: source not found\n",
                         strlen("mv: source not found\n"), 0x0F);
                 continue;
             }
 
             uint32_t dst_dir_inode = 0;
-            if (resolve_dir_inode(argv[2], &dst_dir_inode)) {
+            if (resolve_dir_inode(argv[2], &dst_dir_inode))
+            {
                 dst_parent = dst_dir_inode;
                 dst_name_len = src_name_len;
                 memcpy(dst_name, src_name, src_name_len);
                 dst_name[src_name_len] = '\0';
-            } else {
-                if (!resolve_parent_and_name(argv[2], &dst_parent, dst_name, &dst_name_len)) {
+            }
+            else
+            {
+                if (!resolve_parent_and_name(argv[2], &dst_parent, dst_name, &dst_name_len))
+                {
                     syscall(6, (uint32_t)"mv: invalid destination\n",
                             strlen("mv: invalid destination\n"), 0x0F);
                     continue;
@@ -1165,21 +1361,27 @@ int main(void)
                 .src_parent_inode = src_parent,
                 .dst_name = dst_name,
                 .dst_name_len = dst_name_len,
-                .dst_parent_inode = dst_parent
-            };
+                .dst_parent_inode = dst_parent};
 
             int8_t retcode = 0;
             syscall(9, (uint32_t)&mreq, (uint32_t)&retcode, 0);
 
-            if (retcode == 0) {
+            if (retcode == 0)
+            {
                 // success
-            } else if (retcode == 1) {
+            }
+            else if (retcode == 1)
+            {
                 syscall(6, (uint32_t)"mv: source not found\n",
                         strlen("mv: source not found\n"), 0x0F);
-            } else if (retcode == 2) {
+            }
+            else if (retcode == 2)
+            {
                 syscall(6, (uint32_t)"mv: destination exists\n",
                         strlen("mv: destination exists\n"), 0x0F);
-            } else if (retcode == 4) {
+            }
+            else if (retcode == 4)
+            {
                 syscall(6, (uint32_t)"mv: no space in destination directory\n",
                         strlen("mv: no space in destination directory\n"), 0x0F);
             } else {
