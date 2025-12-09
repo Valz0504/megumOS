@@ -1013,16 +1013,15 @@ int8_t move(struct EXT2MoveRequest *request) {
 
         char *entry_name = get_entry_name(entry);
 
-        // Disallow moving special entries
-        if ((entry->name_len == 1 && entry_name[0] == '.') ||
-            (entry->name_len == 2 && entry_name[0] == '.' && entry_name[1] == '.')) {
-            // Skip special entries
-            offset += entry->rec_len;
-            continue;
-        }
+        // Disallow moving special entries (. and ..)
+        bool is_special = (entry->name_len == 1 && entry_name[0] == '.') ||
+                          (entry->name_len == 2 && entry_name[0] == '.' && entry_name[1] == '.');
 
         if (entry->name_len == request->src_name_len &&
             memcmp(entry_name, request->src_name, request->src_name_len) == 0) {
+            if (is_special) {
+                return 1; // Cannot move . or ..
+            }
             src_entry = entry;
             break;
         }
@@ -1074,11 +1073,6 @@ int8_t move(struct EXT2MoveRequest *request) {
     uint32_t moving_inode = src_entry->inode;
     uint8_t moving_type = src_entry->file_type;
 
-    // Reject attempts to move special entries (e.g., ".." or ".")
-    if (src_prev == NULL) {
-        return 1;
-    }
-
     // Prevent moving a directory into itself or its descendants
     if (moving_type == EXT2_FT_DIR &&
         (request->dst_parent_inode == moving_inode ||
@@ -1090,6 +1084,8 @@ int8_t move(struct EXT2MoveRequest *request) {
     if (src_prev != NULL) {
         src_prev->rec_len += src_entry->rec_len;
     } else {
+        // src_entry is the first entry (should be . or .., which we already reject above)
+        // This case shouldn't happen for normal files/directories
         src_entry->inode = 0;
     }
     write_blocks(&src_buf, src_parent_node.i_block[0], 1);
