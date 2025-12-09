@@ -503,6 +503,8 @@ int main(void)
         while (true)
         {
             syscall(4, (uint32_t)&buf, 0, 0);
+
+            // Handle backspace
             if (buf == '\b')
             {
                 if (idx > 0)
@@ -512,12 +514,19 @@ int main(void)
                 }
                 continue;
             }
-            syscall(5, (uint32_t)buf, 0xF, 0);
 
+            // Handle newline - print it but don't add to buffer
             if (buf == '\n')
+            {
+                syscall(5, (uint32_t)buf, 0xF, 0);
                 break;
+            }
+
             if (buf == '\0')
                 break;
+
+            // Print and add to buffer
+            syscall(5, (uint32_t)buf, 0xF, 0);
 
             if (idx < MAX_CMD_LEN - 1)
             {
@@ -789,24 +798,32 @@ int main(void)
                         break;
                     }
 
+                    // Handle backspace
                     if (ch == '\b')
                     {
                         if (buf_idx > 0)
                         {
-                            syscall(5, (uint32_t)ch, 0x0F, 0);
-                            buf_idx--;
+                            // Jangan hapus newline yang sudah di-commit
+                            if (input_buffer[buf_idx - 1] != '\n')
+                            {
+                                syscall(5, (uint32_t)ch, 0x0F, 0);
+                                buf_idx--;
+                            }
                         }
                         continue;
                     }
 
+                    // Handle newline - print tapi masukkan ke buffer juga (untuk cat)
+                    if (ch == '\n')
+                    {
+                        syscall(5, (uint32_t)ch, 0x0F, 0);
+                        input_buffer[buf_idx++] = ch;
+                        continue;
+                    }
+
+                    // Print dan add ke buffer
                     syscall(5, (uint32_t)ch, 0x0F, 0);
                     input_buffer[buf_idx++] = ch;
-
-                    if (ch == '\n' && buf_idx >= 2 && input_buffer[buf_idx - 2] == '\n')
-                    {
-                        // Double newline bisa jadi tanda selesai (opsional)
-                        // Tapi kita tetap tunggu Ctrl+D
-                    }
                 }
                 input_buffer[buf_idx] = '\0';
 
