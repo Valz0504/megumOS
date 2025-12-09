@@ -110,6 +110,7 @@ user-shell:
 
 apps: app-hello
 apps: app-clock
+apps: app-snake
 
 app-hello:
 	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0_ret.s -o crt0_ret.o
@@ -131,6 +132,15 @@ app-clock:
 		crt0_ret.o app-clock.o string.o -o $(OUTPUT_FOLDER)/clock_elf
 	@rm -f crt0_ret.o app-clock.o string.o
 
+app-snake:
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0_ret.s -o crt0_ret.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/app/snake.c -o app-snake.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/stdlib/string.c -o string.o
+	@$(LIN) -T $(APP_LINKER) -melf_i386 --oformat=binary \
+		crt0_ret.o app-snake.o string.o -o $(OUTPUT_FOLDER)/snake
+	@echo Linking external app: snake
+	@rm -f crt0_ret.o app-snake.o string.o
+
 
 insert-shell: inserter user-shell
 	@echo Inserting shell into root directory...
@@ -140,6 +150,7 @@ insert-apps: inserter apps
 	@echo Inserting apps into root directory...
 	@cd $(OUTPUT_FOLDER); ./inserter hello 1 $(DISK_NAME).bin
 	@cd $(OUTPUT_FOLDER); ./inserter clock 1 $(DISK_NAME).bin
+	@cd $(OUTPUT_FOLDER); ./inserter snake 1 $(DISK_NAME).bin
 
 insert-clock: inserter app-clock
 	@echo Inserting clock into root directory...

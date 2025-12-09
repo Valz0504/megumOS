@@ -45,6 +45,8 @@ void clear_back_buffer();
 
 void clear_screen();
 
+void clear_screen_color(uint8_t color);
+
 void swap_buffer();
 
 void graphics_set_pixel(uint16_t x, uint16_t y, uint8_t color);

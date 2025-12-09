@@ -32,6 +32,14 @@ void framebuffer_clear(void) {
     swap_buffer();
 }
 
+void framebuffer_clear_color(uint8_t color) {
+    clear_screen_color(color);
+    cursor_row = 0;
+    cursor_col = 0;
+    graphics_set_cursor(0, 0);
+    swap_buffer();
+}
+
 void enable_cursor(void) {
     draw_cursor();
     swap_buffer();

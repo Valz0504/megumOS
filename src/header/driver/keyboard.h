@@ -51,6 +51,9 @@ void keyboard_state_deactivate(void);
 // Get keyboard buffer value and flush the buffer - @param buf Pointer to char buffer
 void get_keyboard_buffer(char *buf);
 
+// Try to read keyboard buffer without blocking. Returns true if there was pending input.
+bool keyboard_try_read(char *buf);
+
 /* -- Keyboard Interrupt Service Routine -- */
 
 /**

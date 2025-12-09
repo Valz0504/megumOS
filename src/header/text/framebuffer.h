@@ -48,6 +48,8 @@ void framebuffer_set_cursor(uint8_t r, uint8_t c);
  */
 void framebuffer_clear(void);
 
+void framebuffer_clear_color(uint8_t color);
+
 void putchar(char c, uint8_t color);
 void puts(char *str, uint32_t char_count, uint8_t color);
 void enable_cursor(void);

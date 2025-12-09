@@ -80,9 +80,18 @@ void syscall(struct InterruptFrame frame) {
                 *(struct EXT2DriverRequest*) frame.cpu.general.ebx
             );
             break;
-        case 4:
-            get_keyboard_buffer((char*) frame.cpu.general.ebx);
+        case 4: {
+            char *output = (char*) frame.cpu.general.ebx;
+            bool nonblocking = frame.cpu.general.ecx != 0;
+            if (nonblocking) {
+                if (!keyboard_try_read(output)) {
+                    *output = '\0';
+                }
+            } else {
+                get_keyboard_buffer(output);
+            }
             break;
+        }
         case 5:
             putchar(
                 (char) frame.cpu.general.ebx, 
@@ -101,6 +110,9 @@ void syscall(struct InterruptFrame frame) {
             break;
         case 8:
             framebuffer_clear();
+            break;
+        case 14:
+            framebuffer_clear_color((uint8_t) frame.cpu.general.ebx);
             break;
         case 9:
             *((int8_t*) frame.cpu.general.ecx) = move(

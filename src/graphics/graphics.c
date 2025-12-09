@@ -1,8 +1,19 @@
+#include <stdbool.h>
 #include "../header/graphics/graphics.h"
 #include "../header/cpu/portio.h"
 #include "../header/graphics/font.h"
 #include "../header/graphics/wallpaper.h"
 #include "../header/stdlib/string.h"
+
+static bool wallpaper_background = true;
+static uint8_t solid_bg_color = DEFAULT_COLOR_BG;
+
+static inline uint8_t background_pixel(uint16_t x, uint16_t y) {
+    if (wallpaper_background) {
+        return wallpaper[(uint32_t)y * SCREEN_WIDTH + x];
+    }
+    return solid_bg_color;
+}
 
 static inline void out2(uint16_t port, uint16_t data) {
     out(port, (uint8_t)(data & 0xFF));
@@ -157,15 +168,31 @@ char screenColor[SCREEN_HEIGHT/BLOCK_HEIGHT][SCREEN_WIDTH/BLOCK_WIDTH];
 uint8_t backBuffer[320*200];
 
 void clear_memory_graphics() {
-    memcpy(MEMORY_GRAPHICS, wallpaper, sizeof(wallpaper));
+    if (wallpaper_background) {
+        memcpy(MEMORY_GRAPHICS, wallpaper, sizeof(wallpaper));
+    } else {
+        uint32_t total = SCREEN_WIDTH * SCREEN_HEIGHT;
+        for (uint32_t i = 0; i < total; ++i) {
+            MEMORY_GRAPHICS[i] = solid_bg_color;
+        }
+    }
     return;
 }
 
 void clear_back_buffer() {
-    memcpy(backBuffer, wallpaper, sizeof(wallpaper));
+    if (wallpaper_background) {
+        memcpy(backBuffer, wallpaper, sizeof(wallpaper));
+    } else {
+        uint32_t total = SCREEN_WIDTH * SCREEN_HEIGHT;
+        for (uint32_t i = 0; i < total; ++i) {
+            backBuffer[i] = solid_bg_color;
+        }
+    }
 }
 
 void clear_screen() {
+    wallpaper_background = true;
+    solid_bg_color = DEFAULT_COLOR_BG;
     clear_memory_graphics();
     clear_back_buffer();
     for (uint8_t i = 0; i < rowLimit; ++i) {
@@ -176,6 +203,23 @@ void clear_screen() {
     }
     graphics_set_cursor(0, 0);
     return;
+}
+
+void clear_screen_color(uint8_t color) {
+    wallpaper_background = false;
+    solid_bg_color = color;
+    uint32_t total = SCREEN_WIDTH * SCREEN_HEIGHT;
+    for (uint32_t i = 0; i < total; ++i) {
+        MEMORY_GRAPHICS[i] = color;
+        backBuffer[i] = color;
+    }
+    for (uint8_t i = 0; i < rowLimit; ++i) {
+        for (uint8_t j = 0; j < colLimit; ++j) {
+            screenChar[i][j] = 0;
+            screenColor[i][j] = color;
+        }
+    }
+    graphics_set_cursor(0, 0);
 }
 
 void swap_buffer() {
@@ -209,7 +253,7 @@ void graphics_write_char(uint8_t x, uint8_t y, char c, uint8_t color){
 
     for (uint8_t dx = 0; dx < BLOCK_WIDTH; dx++) {
         for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++) {
-            graphics_set_pixel(blockStartX + dx, blockStartY + dy, wallpaper[(blockStartY + dy) * SCREEN_WIDTH + (blockStartX + dx)]);
+            graphics_set_pixel(blockStartX + dx, blockStartY + dy, background_pixel(blockStartX + dx, blockStartY + dy));
             // graphics_set_pixel(blockStartX + dx, blockStartY + dy, DEFAULT_COLOR_BG);
         }
     }
@@ -307,7 +351,7 @@ void graphics_backspace() {
     uint16_t startY = graphics_cursor_row * BLOCK_HEIGHT;
     for (uint8_t dx = 0; dx < BLOCK_WIDTH; dx++) {
         for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++) {
-            graphics_set_pixel(startX + dx, startY + dy, wallpaper[(startY + dy) * SCREEN_WIDTH + (startX + dx)]);
+            graphics_set_pixel(startX + dx, startY + dy, background_pixel(startX + dx, startY + dy));
             // graphics_set_pixel(startX + dx, startY + dy, DEFAULT_COLOR_BG);
         }
     }
@@ -334,7 +378,7 @@ void graphics_scroll() {
             uint16_t startY = y * BLOCK_HEIGHT;
             for (uint8_t dx = 0; dx < BLOCK_WIDTH; dx++) {
                 for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++) {
-                    graphics_set_pixel(startX + dx, startY + dy, wallpaper[(startY + dy) * SCREEN_WIDTH + (startX + dx)]);
+                    graphics_set_pixel(startX + dx, startY + dy, background_pixel(startX + dx, startY + dy));
                     // graphics_set_pixel(startX + dx, startY + dy, DEFAULT_COLOR_BG);
                 }
             }
@@ -382,7 +426,7 @@ void erase_cursor() {
     uint16_t startY = graphics_cursor_row * BLOCK_HEIGHT;
 
     for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++) {
-        graphics_set_pixel(startX, startY + dy, wallpaper[(startY + dy) * SCREEN_WIDTH + startX]);
+        graphics_set_pixel(startX, startY + dy, background_pixel(startX, startY + dy));
         // graphics_set_pixel(startX, startY + dy, DEFAULT_COLOR_BG);
     }
 }
