@@ -206,5 +206,3 @@ tugas-besar-os-megumos/
 ├── Makefile                   # Build configuration
 └── README.md                  # This file
 ```
-
-**Made with ❤️ by Team MeguMOS**
