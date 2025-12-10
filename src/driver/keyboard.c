@@ -5,7 +5,8 @@ static struct KeyboardDriverState keyboard_state = {
   .read_extended_mode = false,
   .keyboard_input_on = false,
   .keyboard_buffer = '\0',
-  .shift_pressed = false
+  .shift_pressed = false,
+  .ctrl_pressed = false
 };
 
 const char keyboard_scancode_1_to_ascii_map[256] = {
@@ -44,6 +45,20 @@ void keyboard_isr(void) {
 
     uint8_t scancode = in(KEYBOARD_DATA_PORT);
 
+    // CTRL pressed?
+    if (scancode == 0x1D) {   // LCtrl down
+        keyboard_state.ctrl_pressed = true;
+        pic_ack(IRQ_KEYBOARD);
+        return;
+    }
+
+    // CTRL released?
+    if (scancode == 0x9D) {   // LCtrl up
+        keyboard_state.ctrl_pressed = false;
+        pic_ack(IRQ_KEYBOARD);
+        return;
+    }
+
     // SHIFT pressed?
     if (scancode == 0x2A || scancode == 0x36) {   // LShift / RShift down
         keyboard_state.shift_pressed = true;
@@ -70,6 +85,15 @@ void keyboard_isr(void) {
         ascii = keyboard_scancode_shift_to_ascii_map[scancode];
     else
         ascii = keyboard_scancode_1_to_ascii_map[scancode];
+
+    // Handle Ctrl combinations
+    if (keyboard_state.ctrl_pressed && ascii >= 'a' && ascii <= 'z') {
+        // Ctrl+a = 0x01, Ctrl+b = 0x02, ..., Ctrl+z = 0x1A
+        ascii = ascii - 'a' + 1;
+    } else if (keyboard_state.ctrl_pressed && ascii >= 'A' && ascii <= 'Z') {
+        // Same for uppercase
+        ascii = ascii - 'A' + 1;
+    }
 
     if (ascii != '\0') {
         keyboard_state.keyboard_buffer = ascii;
