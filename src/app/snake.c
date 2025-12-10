@@ -273,6 +273,9 @@ int main(void)
     print("Starting Snake (WASD to move, q to quit)\n");
     syscall(7, 0, 0, 0);
 
+    // Set exclusive graphics mode to prevent clock from drawing over the game
+    syscall(18, 1, 0, 0);
+
     // Reset the framebuffer to the top-left on a solid black background
     syscall(14, COLOR_BG, 0, 0);
 
@@ -297,6 +300,9 @@ int main(void)
         alive = move_snake();
         frame_delay();
     }
+
+    // Clear exclusive graphics mode before exiting
+    syscall(18, 0, 0, 0);
 
     syscall(8, 0, 0, 0);
     if (alive) {

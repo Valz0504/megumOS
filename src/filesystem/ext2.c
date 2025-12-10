@@ -1245,107 +1245,88 @@ int8_t move(struct EXT2MoveRequest *request) {
     }
 
     struct BlockBuffer src_buf;
-    read_blocks(&src_buf, src_parent_node.i_block[0], 1);
-
-    // Find source entry
-    uint32_t offset = 0;
+    struct BlockBuffer indir_cache;
+    
+    // Find source entry - iterate through ALL blocks
     struct EXT2DirectoryEntry *src_entry = NULL;
     struct EXT2DirectoryEntry *src_prev = NULL;
+    uint32_t src_block_idx = 0;
+    uint32_t src_block_num = 0;
+    
+    for (uint32_t blk_idx = 0; blk_idx < src_parent_node.i_blocks; blk_idx++) {
+        src_block_num = get_data_block_num(&src_parent_node, blk_idx, &indir_cache);
+        if (src_block_num == 0) break;
+        
+        read_blocks(&src_buf, src_block_num, 1);
+        
+        uint32_t offset = 0;
+        src_prev = NULL;
+        
+        while (offset < BLOCK_SIZE) {
+            struct EXT2DirectoryEntry *entry = get_directory_entry(src_buf.buf, offset);
 
-    while (offset < BLOCK_SIZE) {
-        struct EXT2DirectoryEntry *entry = get_directory_entry(src_buf.buf, offset);
+            if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
+            if (entry->inode == 0) {
+                offset += entry->rec_len;
+                continue;
+            }
 
-        if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
-        if (entry->inode == 0) break;
+            char *entry_name = get_entry_name(entry);
 
-        char *entry_name = get_entry_name(entry);
-
-        // Disallow moving special entries
-        if ((entry->name_len == 1 && entry_name[0] == '.') ||
-            (entry->name_len == 2 && entry_name[0] == '.' && entry_name[1] == '.')) {
             // Skip special entries
+            if ((entry->name_len == 1 && entry_name[0] == '.') ||
+                (entry->name_len == 2 && entry_name[0] == '.' && entry_name[1] == '.')) {
+                src_prev = entry;
+                offset += entry->rec_len;
+                continue;
+            }
+
+            if (entry->name_len == request->src_name_len &&
+                memcmp(entry_name, request->src_name, request->src_name_len) == 0) {
+                src_entry = entry;
+                src_block_idx = blk_idx;
+                break;
+            }
+
+            src_prev = entry;
             offset += entry->rec_len;
-            continue;
         }
-
-        if (entry->name_len == request->src_name_len &&
-            memcmp(entry_name, request->src_name, request->src_name_len) == 0) {
-            src_entry = entry;
-            break;
-        }
-
-        src_prev = entry;
-        offset += entry->rec_len;
+        
+        if (src_entry != NULL) break;
     }
 
     if (src_entry == NULL) {
         return 1;   // source not found
     }
 
-    // Prepare destination buffer and ensure name not taken
-    struct BlockBuffer dst_buf;
-    read_blocks(&dst_buf, dst_parent_node.i_block[0], 1);
-
-    struct EXT2DirectoryEntry *dst_last = NULL;
-    uint16_t dst_last_actual_len = 0;
-    uint32_t insert_offset = 0;
-    offset = 0;
-    while (offset < BLOCK_SIZE) {
-        struct EXT2DirectoryEntry *entry = get_directory_entry(dst_buf.buf, offset);
-
-        if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
-        if (entry->inode == 0) break;
-
-        char *entry_name = get_entry_name(entry);
-        if (entry->name_len == request->dst_name_len &&
-            memcmp(entry_name, request->dst_name, request->dst_name_len) == 0) {
-            return 2;   // destination exists
-        }
-
-        dst_last = entry;
-        offset += entry->rec_len;
-    }
-
-    uint16_t min_required = get_entry_record_len(request->dst_name_len);
-    if (dst_last != NULL) {
-        dst_last_actual_len = get_entry_record_len(dst_last->name_len);
-        insert_offset = (uint32_t)((uint8_t *)dst_last - dst_buf.buf) + dst_last_actual_len;
-    } else {
-        insert_offset = 0;
-    }
-
-    if (insert_offset + min_required > BLOCK_SIZE) {
-        return 4;   // no space
-    }
-
     uint32_t moving_inode = src_entry->inode;
     uint8_t moving_type = src_entry->file_type;
-
-    // Reject attempts to move special entries (e.g., ".." or ".")
-    if (src_prev == NULL) {
-        return 1;
-    }
 
     // Prevent moving a directory into itself or its descendants
     if (moving_type == EXT2_FT_DIR &&
         (request->dst_parent_inode == moving_inode ||
          is_ancestor(moving_inode, request->dst_parent_inode))) {
-        return 2; // treat as destination exists/invalid
+        return 2;
     }
 
-    // Remove from source directory
-    if (src_prev != NULL) {
-        src_prev->rec_len += src_entry->rec_len;
-    } else {
-        src_entry->inode = 0;
-    }
-    write_blocks(&src_buf, src_parent_node.i_block[0], 1);
+    // Check destination doesn't exist and find insertion point - iterate through ALL blocks
+    struct BlockBuffer dst_buf;
+    struct EXT2DirectoryEntry *dst_last = NULL;
+    uint32_t dst_block_idx = 0;
+    uint32_t dst_block_num = 0;
+    uint32_t insert_offset = 0;
+    bool found_slot = false;
+    uint16_t min_required = get_entry_record_len(request->dst_name_len);
 
-    // If moving within same directory, re-read destination buffer after removal
-    if (request->src_parent_inode == request->dst_parent_inode) {
-        read_blocks(&dst_buf, dst_parent_node.i_block[0], 1);
+    for (uint32_t blk_idx = 0; blk_idx < dst_parent_node.i_blocks; blk_idx++) {
+        dst_block_num = get_data_block_num(&dst_parent_node, blk_idx, &indir_cache);
+        if (dst_block_num == 0) break;
+        
+        read_blocks(&dst_buf, dst_block_num, 1);
+        
+        uint32_t offset = 0;
         dst_last = NULL;
-        offset = 0;
+        
         while (offset < BLOCK_SIZE) {
             struct EXT2DirectoryEntry *entry = get_directory_entry(dst_buf.buf, offset);
 
@@ -1355,24 +1336,104 @@ int8_t move(struct EXT2MoveRequest *request) {
             char *entry_name = get_entry_name(entry);
             if (entry->name_len == request->dst_name_len &&
                 memcmp(entry_name, request->dst_name, request->dst_name_len) == 0) {
-                return 2;
+                return 2;   // destination exists
             }
 
             dst_last = entry;
             offset += entry->rec_len;
         }
-
-        dst_last_actual_len = (dst_last != NULL) ? get_entry_record_len(dst_last->name_len) : 0;
-        insert_offset = (dst_last != NULL) ?
-            (uint32_t)((uint8_t *)dst_last - dst_buf.buf) + dst_last_actual_len : 0;
-
-        if (insert_offset + min_required > BLOCK_SIZE) {
-            return 4;
+        
+        // Check if we can fit the new entry in this block
+        if (dst_last != NULL) {
+            uint16_t actual_last_len = get_entry_record_len(dst_last->name_len);
+            if (actual_last_len + min_required <= dst_last->rec_len) {
+                // Can carve space from last entry
+                dst_block_idx = blk_idx;
+                insert_offset = (uint32_t)((uint8_t *)dst_last - dst_buf.buf) + actual_last_len;
+                found_slot = true;
+                break;
+            }
+        }
+        
+        // Check remaining space at end of block
+        if (BLOCK_SIZE - offset >= min_required) {
+            dst_block_idx = blk_idx;
+            insert_offset = offset;
+            found_slot = true;
+            break;
         }
     }
 
+    if (!found_slot) {
+        return 4;   // no space in destination
+    }
+
+    // Re-read source block (might have been overwritten if same parent)
+    src_block_num = get_data_block_num(&src_parent_node, src_block_idx, &indir_cache);
+    read_blocks(&src_buf, src_block_num, 1);
+    
+    // Re-find source entry and prev in the freshly read block
+    uint32_t offset = 0;
+    src_entry = NULL;
+    src_prev = NULL;
+    
+    while (offset < BLOCK_SIZE) {
+        struct EXT2DirectoryEntry *entry = get_directory_entry(src_buf.buf, offset);
+        if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
+        if (entry->inode == 0) {
+            offset += entry->rec_len;
+            continue;
+        }
+        
+        char *entry_name = get_entry_name(entry);
+        if ((entry->name_len == 1 && entry_name[0] == '.') ||
+            (entry->name_len == 2 && entry_name[0] == '.' && entry_name[1] == '.')) {
+            src_prev = entry;
+            offset += entry->rec_len;
+            continue;
+        }
+        
+        if (entry->name_len == request->src_name_len &&
+            memcmp(entry_name, request->src_name, request->src_name_len) == 0) {
+            src_entry = entry;
+            break;
+        }
+        
+        src_prev = entry;
+        offset += entry->rec_len;
+    }
+    
+    if (src_entry == NULL) {
+        return 1;
+    }
+
+    // Remove from source directory
+    if (src_prev != NULL) {
+        src_prev->rec_len += src_entry->rec_len;
+    } else {
+        src_entry->inode = 0;
+    }
+    write_blocks(&src_buf, src_block_num, 1);
+
+    // Re-read destination block
+    dst_block_num = get_data_block_num(&dst_parent_node, dst_block_idx, &indir_cache);
+    read_blocks(&dst_buf, dst_block_num, 1);
+    
+    // Re-calculate insert_offset and adjust last entry
+    offset = 0;
+    dst_last = NULL;
+    while (offset < BLOCK_SIZE) {
+        struct EXT2DirectoryEntry *entry = get_directory_entry(dst_buf.buf, offset);
+        if (entry->rec_len == 0 || entry->rec_len > BLOCK_SIZE - offset) break;
+        if (entry->inode == 0) break;
+        dst_last = entry;
+        offset += entry->rec_len;
+    }
+    
     if (dst_last != NULL) {
-        dst_last->rec_len = dst_last_actual_len;
+        uint16_t actual_last_len = get_entry_record_len(dst_last->name_len);
+        insert_offset = (uint32_t)((uint8_t *)dst_last - dst_buf.buf) + actual_last_len;
+        dst_last->rec_len = actual_last_len;
     } else {
         insert_offset = 0;
     }
@@ -1384,7 +1445,7 @@ int8_t move(struct EXT2MoveRequest *request) {
     new_entry->file_type = moving_type;
     memcpy(get_entry_name(new_entry), request->dst_name, request->dst_name_len);
 
-    write_blocks(&dst_buf, dst_parent_node.i_block[0], 1);
+    write_blocks(&dst_buf, dst_block_num, 1);
 
     // Update ".." pointer if moving directory across parents
     if (moving_type == EXT2_FT_DIR &&

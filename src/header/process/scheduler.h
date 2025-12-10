@@ -25,5 +25,6 @@ void scheduler_tick(struct InterruptFrame *frame);
 void scheduler_clock_start(void);
 void scheduler_clock_stop(void);
 bool scheduler_clock_status(void);
+void scheduler_set_graphics_exclusive(bool exclusive);
 
 #endif

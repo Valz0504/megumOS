@@ -154,6 +154,9 @@ void syscall(struct InterruptFrame frame) {
         case 13:
             *((bool*) frame.cpu.general.ecx) = scheduler_clock_status();
             break;
+        case 18:
+            scheduler_set_graphics_exclusive((bool) frame.cpu.general.ebx);
+            break;
     }
 }
 

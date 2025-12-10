@@ -860,13 +860,13 @@ int main(void)
                 .name = ".",
                 .name_len = 1,
                 .parent_inode = target_inode,
-                .buffer_size = 1024,
+                .buffer_size = 16384,
                 .is_directory = true};
             uint32_t retcode = 0;
             syscall(1, (uint32_t)&req, (uint32_t)&retcode, 0);
             if ((int8_t)retcode == 0)
             {
-                uint16_t offset = 0;
+                uint32_t offset = 0;
                 uint8_t *block = (uint8_t *)req.buf;
 
                 while (offset < req.buffer_size)
@@ -942,13 +942,13 @@ int main(void)
                 .name = ".",
                 .name_len = 1,
                 .parent_inode = target_inode,
-                .buffer_size = 1024,
+                .buffer_size = 16384,
                 .is_directory = true};
             uint32_t retcode = 0;
             syscall(1, (uint32_t)&req, (uint32_t)&retcode, 0);
             if ((int8_t)retcode == 0)
             {
-                uint16_t offset = 0;
+                uint32_t offset = 0;
                 uint8_t *block = (uint8_t *)req.buf;
 
                 while (offset < req.buffer_size)

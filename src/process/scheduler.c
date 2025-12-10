@@ -11,6 +11,7 @@
 
 volatile uint32_t scheduler_ticks = 0;
 static volatile bool clock_enabled = false;
+static volatile bool graphics_exclusive_mode = false;  // When true, clock won't draw
 static uint32_t last_clock_tick = 0;
 
 static void clear_clock_area(uint8_t row, uint8_t col_start)
@@ -75,7 +76,8 @@ void scheduler_tick(struct InterruptFrame *frame)
 {
     (void)frame;
     scheduler_ticks++;
-    if (clock_enabled && scheduler_ticks - last_clock_tick >= PIT_TIMER_FREQUENCY)
+    // Only draw clock if enabled AND not in exclusive graphics mode (e.g., snake game)
+    if (clock_enabled && !graphics_exclusive_mode && scheduler_ticks - last_clock_tick >= PIT_TIMER_FREQUENCY)
     {
         draw_clock(FB_ROWS - 1, FB_COLS - 8);
         last_clock_tick = scheduler_ticks;
@@ -99,4 +101,9 @@ void scheduler_clock_stop(void)
 bool scheduler_clock_status(void)
 {
     return clock_enabled;
+}
+
+void scheduler_set_graphics_exclusive(bool exclusive)
+{
+    graphics_exclusive_mode = exclusive;
 }
