@@ -28,12 +28,15 @@ extern const char keyboard_scancode_1_to_ascii_map[256];
  * @param read_extended_mode Optional, can be used for signaling next read is extended scancode (ex. arrow keys)
  * @param keyboard_input_on  Indicate whether keyboard ISR is activated or not
  * @param keyboard_buffer    Storing keyboard input values in ASCII
+ * @param shift_pressed      Indicate whether shift key is currently pressed
+ * @param ctrl_pressed       Indicate whether ctrl key is currently pressed
  */
 struct KeyboardDriverState {
     bool read_extended_mode;
     bool keyboard_input_on;
     char keyboard_buffer;
     bool shift_pressed;
+    bool ctrl_pressed;
 } __attribute((packed));
 
 
