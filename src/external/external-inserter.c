@@ -168,8 +168,13 @@ int main(int argc, char *argv[]) {
     else
         puts("Error: Unknown error");
 
-    // Write image in memory into original, overwrite them
-    fptr = fopen(argv[3], "w");
+    // Write image in memory back to disk
+    fptr = fopen(argv[3], "r+");
+    if (fptr == NULL) {
+        // If file doesn't exist, create it
+        fptr = fopen(argv[3], "w");
+    }
+    fseek(fptr, 0, SEEK_SET);
     fwrite(image_storage, DISK_SPACE, 1, fptr);
     fclose(fptr);
 

@@ -838,6 +838,13 @@ int main(void)
         else if (strcmp(argv[0], "ls") == 0)
         {
             uint32_t target_inode = current_directory;
+            bool show_all = false;
+            
+            // Check if "lsa" for show all
+            if (strcmp(argv[0], "lsa") == 0) {
+                show_all = true;
+            }
+            
             if (argc >= 2)
             {
                 if (!resolve_dir_inode(argv[1], &target_inode))
@@ -891,9 +898,13 @@ int main(void)
                         continue;
                     }
 
-                    // Skip "badapple_*.avf" files to keep ls clean
-                    if (e->name_len == 16 && 
+                    // Skip "badapple_*.avf" files to keep ls clean (unless lsa)
+                    // Format: badapple_NNN.avf (exactly 16 chars)
+                    if (!show_all && e->name_len == 16 && 
                         memcmp(name, "badapple_", 9) == 0 && 
+                        name[9] >= '0' && name[9] <= '9' &&
+                        name[10] >= '0' && name[10] <= '9' &&
+                        name[11] >= '0' && name[11] <= '9' &&
                         memcmp(name + 12, ".avf", 4) == 0)
                     {
                         offset += e->rec_len;
@@ -912,6 +923,68 @@ int main(void)
             }
             continue;
         }
+        else if (strcmp(argv[0], "lsa") == 0)
+        {
+            // ls all - show everything including badapple files
+            uint32_t target_inode = current_directory;
+            if (argc >= 2)
+            {
+                if (!resolve_dir_inode(argv[1], &target_inode))
+                {
+                    syscall(6, (uint32_t)"lsa: directory not found\n",
+                            strlen("lsa: directory not found\n"), 0x0F);
+                    continue;
+                }
+            }
+
+            struct EXT2DriverRequest req = {
+                .buf = (void *)0x210000,
+                .name = ".",
+                .name_len = 1,
+                .parent_inode = target_inode,
+                .buffer_size = 1024,
+                .is_directory = true};
+            uint32_t retcode = 0;
+            syscall(1, (uint32_t)&req, (uint32_t)&retcode, 0);
+            if ((int8_t)retcode == 0)
+            {
+                uint16_t offset = 0;
+                uint8_t *block = (uint8_t *)req.buf;
+
+                while (offset < req.buffer_size)
+                {
+                    struct EXT2DirectoryEntry *e = (void *)(block + offset);
+
+                    if (e->rec_len == 0)
+                        break;
+                    if (e->inode == 0)
+                    {
+                        offset += e->rec_len;
+                        continue;
+                    }
+
+                    char *name = (char *)(block + offset + sizeof(*e));
+
+                    // Skip ".", ".."
+                    if ((e->name_len == 1 && name[0] == '.') ||
+                        (e->name_len == 2 && name[0] == '.' && name[1] == '.'))
+                    {
+                        offset += e->rec_len;
+                        continue;
+                    }
+
+                    // Print everything (no filtering)
+                    for (uint16_t i = 0; i < e->name_len; i++)
+                    {
+                        syscall(5, (uint32_t)name[i], 0x0F, 0);
+                    }
+                    syscall(5, (uint32_t)'\n', 0x0F, 0);
+
+                    offset += e->rec_len;
+                }
+            }
+            continue;
+        }
         else if (strcmp(argv[0], "cd") == 0)
         {
             if (argc < 2)
@@ -919,7 +992,6 @@ int main(void)
                 syscall(6, (uint32_t)"cd: missing argument\n", 23, 0x0F);
                 continue;
             }
-
             if (!resolve_and_change_dir(argv[1]))
             {
                 syscall(6, (uint32_t)"cd: directory not found\n",
