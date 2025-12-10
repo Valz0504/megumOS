@@ -891,6 +891,15 @@ int main(void)
                         continue;
                     }
 
+                    // Skip "badapple_*.avf" files to keep ls clean
+                    if (e->name_len == 16 && 
+                        memcmp(name, "badapple_", 9) == 0 && 
+                        memcmp(name + 12, ".avf", 4) == 0)
+                    {
+                        offset += e->rec_len;
+                        continue;
+                    }
+
                     // Print name
                     for (uint16_t i = 0; i < e->name_len; i++)
                     {

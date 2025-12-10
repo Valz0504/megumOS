@@ -114,9 +114,35 @@ void syscall(struct InterruptFrame frame) {
         case 14:
             framebuffer_clear_color((uint8_t) frame.cpu.general.ebx);
             break;
+        case 15:
+            framebuffer_draw_text_frame(
+                (const char *)frame.cpu.general.ebx,
+                (uint8_t)frame.cpu.general.ecx,
+                (uint8_t)frame.cpu.general.edx
+            );
+            break;
+        case 16:
+            *((int8_t*) frame.cpu.general.ecx) = read_partial(
+                *((struct EXT2PartialRequest*) frame.cpu.general.ebx),
+                (uint32_t*) frame.cpu.general.edx
+            );
+            break;
+        case 17:
+            framebuffer_draw_text_frame_color(
+                (const char *)frame.cpu.general.ebx,
+                (uint8_t)frame.cpu.general.ecx,
+                (uint8_t)(frame.cpu.general.edx & 0xFF),
+                (uint8_t)((frame.cpu.general.edx >> 8) & 0xFF)
+            );
+            break;
         case 9:
             *((int8_t*) frame.cpu.general.ecx) = move(
                 (struct EXT2MoveRequest*) frame.cpu.general.ebx
+            );
+            break;
+        case 10:
+            *((int8_t*) frame.cpu.general.ecx) = read_directory(
+                (struct EXT2DriverRequest*) frame.cpu.general.ebx
             );
             break;
         case 11:

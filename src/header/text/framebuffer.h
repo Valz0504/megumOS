@@ -50,6 +50,9 @@ void framebuffer_clear(void);
 
 void framebuffer_clear_color(uint8_t color);
 
+void framebuffer_draw_text_frame_color(const char *buf, uint8_t width, uint8_t height, uint8_t color);
+void framebuffer_draw_text_frame(const char *buf, uint8_t width, uint8_t height);
+
 void putchar(char c, uint8_t color);
 void puts(char *str, uint32_t char_count, uint8_t color);
 void enable_cursor(void);

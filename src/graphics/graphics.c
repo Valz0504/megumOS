@@ -154,6 +154,12 @@ void initialize_vga()
     out(DAC_DATA_REG, 63);
     out(DAC_DATA_REG, 0);
 
+    // Reserve a white slot for ASCII video (color index COLOR_ASCII_WHITE)
+    out(DAC_WRITE_REG, COLOR_ASCII_WHITE);
+    out(DAC_DATA_REG, 63);
+    out(DAC_DATA_REG, 63);
+    out(DAC_DATA_REG, 63);
+
     out(ATTR_ADDR_REG, 0x20);
     return;
 }
