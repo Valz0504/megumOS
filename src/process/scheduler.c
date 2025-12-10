@@ -11,7 +11,7 @@
 
 volatile uint32_t scheduler_ticks = 0;
 static volatile bool clock_enabled = false;
-static volatile bool graphics_exclusive_mode = false;  // When true, clock won't draw
+static volatile bool graphics_exclusive_mode = false;  // When true, clock uses direct VGA writes
 static uint32_t last_clock_tick = 0;
 
 static void clear_clock_area(uint8_t row, uint8_t col_start)
@@ -52,6 +52,36 @@ static void draw_clock(uint8_t row, uint8_t col_start)
     }
 }
 
+// Draw clock directly to VGA memory without swap_buffer (for use with graphics apps)
+static void draw_clock_direct(uint8_t row, uint8_t col_start)
+{
+    struct RTCData rtc;
+    read_rtc(&rtc);
+
+    // Convert to GMT+7 (Jakarta, Indonesia)
+    uint8_t hour_gmt7 = rtc.hour + 7;
+    if (hour_gmt7 >= 24)
+    {
+        hour_gmt7 -= 24;
+    }
+
+    char buf[9];
+    buf[0] = (hour_gmt7 / 10) + '0';
+    buf[1] = (hour_gmt7 % 10) + '0';
+    buf[2] = ':';
+    buf[3] = (rtc.minute / 10) + '0';
+    buf[4] = (rtc.minute % 10) + '0';
+    buf[5] = ':';
+    buf[6] = (rtc.second / 10) + '0';
+    buf[7] = (rtc.second % 10) + '0';
+    buf[8] = '\0';
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        graphics_write_char_direct(col_start + i, row, buf[i], DEFAULT_COLOR_FG);
+    }
+}
+
 static void activate_timer_interrupt(void)
 {
     __asm__ volatile("cli");
@@ -76,10 +106,14 @@ void scheduler_tick(struct InterruptFrame *frame)
 {
     (void)frame;
     scheduler_ticks++;
-    // Only draw clock if enabled AND not in exclusive graphics mode (e.g., snake game)
-    if (clock_enabled && !graphics_exclusive_mode && scheduler_ticks - last_clock_tick >= PIT_TIMER_FREQUENCY)
+    // Draw clock if enabled - use direct mode when in graphics exclusive mode (e.g., snake game)
+    if (clock_enabled && scheduler_ticks - last_clock_tick >= PIT_TIMER_FREQUENCY)
     {
-        draw_clock(FB_ROWS - 1, FB_COLS - 8);
+        if (graphics_exclusive_mode) {
+            draw_clock_direct(FB_ROWS - 1, FB_COLS - 8);
+        } else {
+            draw_clock(FB_ROWS - 1, FB_COLS - 8);
+        }
         last_clock_tick = scheduler_ticks;
     }
     pic_ack(IRQ_TIMER);

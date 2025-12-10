@@ -423,6 +423,30 @@ void graphics_set_block(uint8_t x, uint8_t y, uint8_t color) {
     }
 }
 
+// Direct write to VGA memory - bypasses backBuffer and swap_buffer
+// Used for overlay elements like clock that shouldn't overwrite app graphics
+void graphics_write_char_direct(uint8_t x, uint8_t y, char c, uint8_t color) {
+    if (x >= colLimit || y >= rowLimit) return;
+    
+    uint8_t index = (uint8_t)c;
+    uint16_t blockStartX = x * BLOCK_WIDTH;
+    uint16_t blockStartY = y * BLOCK_HEIGHT;
+    
+    // Clear the character cell first (black background for overlay)
+    for (uint8_t dx = 0; dx < BLOCK_WIDTH; dx++) {
+        for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++) {
+            MEMORY_GRAPHICS[(blockStartY + dy) * SCREEN_WIDTH + blockStartX + dx] = DEFAULT_COLOR_BG;
+        }
+    }
+    
+    // Draw the character pixels directly to VGA memory
+    for (int i = 1; i < lookup[index][0]; i++) {
+        uint8_t px = lookup[index][i] >> 4;
+        uint8_t py = lookup[index][i] & 0x0f;
+        MEMORY_GRAPHICS[(blockStartY + py) * SCREEN_WIDTH + blockStartX + px] = color;
+    }
+}
+
 void draw_cursor() {
     uint16_t startX = graphics_cursor_col * BLOCK_WIDTH;
     uint16_t startY = graphics_cursor_row * BLOCK_HEIGHT;

@@ -72,6 +72,8 @@ void graphics_scroll();
 
 void graphics_set_block(uint8_t x, uint8_t y, uint8_t color);
 
+void graphics_write_char_direct(uint8_t x, uint8_t y, char c, uint8_t color);
+
 void draw_cursor();
 
 void erase_cursor();

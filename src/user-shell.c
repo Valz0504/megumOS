@@ -1056,6 +1056,16 @@ int main(void)
                     continue;
                 }
 
+                struct EXT2DriverRequest del_req = {
+                    .buf = NULL,
+                    .name = name,
+                    .name_len = name_len,
+                    .parent_inode = parent_inode,
+                    .buffer_size = 0,
+                    .is_directory = false};
+                int8_t del_ret;
+                syscall(3, (uint32_t)&del_req, (uint32_t)&del_ret, 0);
+
                 struct EXT2DriverRequest write_req = {
                     .buf = input_buffer,
                     .name = name,
