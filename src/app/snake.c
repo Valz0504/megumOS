@@ -240,7 +240,7 @@ static void print_score_detail(void)
     print_number(score);
     print("  Length: ");
     print_number(snake_length);
-    print("   "); // pad to clear old digits
+    print("   ");
 }
 
 static void update_direction(char key)
@@ -285,12 +285,10 @@ static void update_direction(char key)
 
 static void frame_delay(void)
 {
-    // Busy-wait delay; tuned for faster gameplay
-    uint32_t speed = 80000000; // ~40-60 ms on typical QEMU (faster!)
+    uint32_t speed = 80000000; 
     if (score > 10)
     {
         uint32_t delta = (score - 10) * 3000000;
-        // Keep a lower bound so the game remains playable as score grows
         if (delta >= (speed - 20000000))
         {
             speed = 20000000;
@@ -311,10 +309,7 @@ int main(void)
     print("Starting Snake (WASD to move, q to quit)\n");
     syscall(7, 0, 0, 0);
 
-    // Set exclusive graphics mode to prevent clock from drawing over the game
     syscall(18, 1, 0, 0);
-
-    // Reset the framebuffer to the top-left on a solid black background
     syscall(14, COLOR_BG, 0, 0);
 
     init_snake();
