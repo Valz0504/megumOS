@@ -20,9 +20,9 @@ static void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
 #define GRID_ROWS     (SCREEN_HEIGHT / CELL_SIZE)
 #define MAX_SNAKE_LEN (GRID_COLS * GRID_ROWS)
 #define VGA_MEMORY    ((volatile uint8_t *)0xC00A0000)
-#define COLOR_BG      6    // Palette entry 6 is pure black
+#define COLOR_BG      248  // Palette entry 248 is pure black
 #define COLOR_SNAKE   250  // Palette entry 250 is set to bright green in initialize_vga()
-#define COLOR_FOOD    12   // Light red
+#define COLOR_FOOD    12  // Use green for food too (red 12 may not be visible)
 
 // Simple pseudo-random generator
 static uint32_t rng_state = 0xC0DE2025;

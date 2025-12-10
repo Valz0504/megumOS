@@ -14,7 +14,7 @@ static void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx)
     __asm__ volatile("int $0x30");
 }
 
-#define COLOR_BG        6      // palette index for pure black
+#define COLOR_BG        DEFAULT_COLOR_BG      // palette index for pure black
 #define TEXT_COLOR      COLOR_ASCII_WHITE   // dedicated white slot
 #define MAX_FRAME_CELLS (64 * 25)
 #define VIDEO_MAGIC     0x41534349u  // "ASCI"
