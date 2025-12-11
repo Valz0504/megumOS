@@ -126,31 +126,18 @@ cd tugas-besar-os-megumos
 
 ## 🚀 Cara Menjalankan
 
-### 1. Build OS
-
-Build kernel, shell, aplikasi, dan Bad Apple video:
+### Build dan Jalankan OS
 
 ```bash
-make megumos
-```
-
-File hasil kompilasi akan tersimpan di folder `bin/`.
-
-### 2. Jalankan di QEMU
-
-Jalankan OS menggunakan emulator QEMU:
-
-```bash
+make disk
+python3 tools/pack_ascii_video.py "bad apple.mp4"
+make insert-shell
+make insert-apps
+make insert-badapple
 make run
 ```
 
-Atau secara manual:
-
-```bash
-qemu-system-i386 -drive file=bin/storage.bin,format=raw,if=ide,index=0,media=disk -cdrom bin/OS2025.iso
-```
-
-### 3. Clean Build Files
+### Clean Build Files
 
 Untuk membersihkan file hasil kompilasi:
 

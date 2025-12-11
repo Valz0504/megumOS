@@ -180,10 +180,3 @@ insert-badapple: inserter
 			( cd $(OUTPUT_FOLDER) && ./inserter $$(basename $$f) 1 $(DISK_NAME).bin ); \
 		fi; \
 	done
-
-megumos: clean disk build inserter insert-shell insert-apps
-	@echo "Converting Bad Apple video to ASCII frames..."
-	@python3 tools/pack_ascii_video.py "tools/bad apple.mp4"
-	@$(MAKE) insert-badapple
-	@echo === MEGUMOS COMPLETE ===
-	@echo "Run 'make run' to start the OS"
