@@ -9,7 +9,7 @@
 
 /* -- IF2130 File System constants -- */
 #define BOOT_SECTOR 0 // legacy from FAT32 filesystem IF2130 OS
-#define DISK_SPACE 4194304u // 4MB disk space (because our disk or storage.bin is 4MB)
+#define DISK_SPACE 67108864u // 64MB disk space (for bad apple video files)
 #define EXT2_SUPER_MAGIC 0xEF53 // this indicating that the filesystem used by OS is ext2
 #define INODE_SIZE sizeof(struct EXT2Inode) // size of inode
 #define INODES_PER_TABLE (BLOCK_SIZE / INODE_SIZE) // number of inode per block (512 / )
@@ -54,6 +54,17 @@ struct EXT2DriverRequest
 
     bool is_directory; 
 }__attribute__((packed));
+
+struct EXT2PartialRequest
+{
+    struct EXT2DriverRequest driver;
+    uint32_t offset;
+    uint32_t length;
+}__attribute__((packed));
+
+int8_t read(struct EXT2DriverRequest request);
+int8_t read_partial(struct EXT2PartialRequest request, uint32_t *bytes_read_out);
+int8_t write(struct EXT2DriverRequest *request);
 
 /**
  * EXT2Superblock: 

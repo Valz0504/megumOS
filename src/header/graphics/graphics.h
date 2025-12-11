@@ -31,9 +31,10 @@
 #define BLOCK_WIDTH 5
 #define BLOCK_HEIGHT 8
 
-#define DEFAULT_COLOR_BG 0
+#define DEFAULT_COLOR_BG 248
 #define DEFAULT_COLOR_FG 250
 #define CURSOR_COLOR DEFAULT_COLOR_FG
+#define COLOR_ASCII_WHITE 251
 
 #define MEMORY_GRAPHICS ((uint8_t *)0xC00A0000)
 
@@ -70,6 +71,8 @@ void graphics_backspace();
 void graphics_scroll();
 
 void graphics_set_block(uint8_t x, uint8_t y, uint8_t color);
+
+void graphics_write_char_direct(uint8_t x, uint8_t y, char c, uint8_t color);
 
 void draw_cursor();
 

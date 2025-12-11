@@ -78,8 +78,9 @@ megumOS adalah sistem operasi sederhana yang dikembangkan sebagai bagian dari Tu
   - `getenv` - Get environment variable
   - `printenv` - Print all environment variables
 - **External Applications**
-  - `hello` - Print hello
-  - `snake` - Play snake game
+  - `exec hello` - Print hello message
+  - `exec snake` - Play snake game
+  - `exec bad-apple` - Play Bad Apple ASCII video (Ctrl+C to stop)
 
 ### Graphics
 
@@ -101,6 +102,8 @@ Pastikan sistem Anda memiliki tools berikut:
 - **Make** - Build automation tool
 - **QEMU** - Hardware emulator
 - **genisoimage** - ISO image creator
+- **Python 3** - Untuk konversi video Bad Apple
+- **opencv-python** - Library Python untuk pemrosesan video
 
 ### Langkah Instalasi
 
@@ -108,7 +111,8 @@ Pastikan sistem Anda memiliki tools berikut:
 
 ```bash
 sudo apt update
-sudo apt install make nasm gcc qemu-system-x86 genisoimage
+sudo apt install make nasm gcc qemu-system-x86 genisoimage python3 python3-pip
+pip3 install opencv-python
 ```
 
 2. **Clone repository**
@@ -122,9 +126,9 @@ cd tugas-besar-os-megumos
 
 ## 🚀 Cara Menjalankan
 
-### 1. Build Kernel
+### 1. Build OS
 
-Compile kernel dan dependencies:
+Build kernel, shell, aplikasi, dan Bad Apple video:
 
 ```bash
 make megumos
@@ -143,18 +147,10 @@ make run
 Atau secara manual:
 
 ```bash
-qemu-system-i386 -s -S -drive file=bin/storage.bin,format=raw,if=ide,index=0,media=disk -cdrom bin/OS2025.iso
+qemu-system-i386 -drive file=bin/storage.bin,format=raw,if=ide,index=0,media=disk -cdrom bin/OS2025.iso
 ```
 
-### 3. Jalankan dengan Debug
-
-Untuk menjalankan dengan GDB debugger:
-
-```bash
-make debug
-```
-
-### 4. Clean Build Files
+### 3. Clean Build Files
 
 Untuk membersihkan file hasil kompilasi:
 

@@ -37,9 +37,14 @@ build: iso
 
 clean:
 	rm -rf *.o *.iso $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/*.o $(OUTPUT_FOLDER)/iso
+	rm -rf $(OUTPUT_FOLDER)/$(ISO_NAME).iso $(OUTPUT_FOLDER)/$(DISK_NAME)*.bin*
+	rm -rf $(OUTPUT_FOLDER)/shell $(OUTPUT_FOLDER)/shell_elf $(OUTPUT_FOLDER)/hello \
+		$(OUTPUT_FOLDER)/clock $(OUTPUT_FOLDER)/clock_elf $(OUTPUT_FOLDER)/snake \
+		$(OUTPUT_FOLDER)/bad-apple $(OUTPUT_FOLDER)/ascii-video $(OUTPUT_FOLDER)/inserter
+	rm -rf $(OUTPUT_FOLDER)/badapple*.avf
 
 disk:
-	@qemu-img create -f raw $(OUTPUT_FOLDER)/$(DISK_NAME).bin 4M
+	@qemu-img create -f raw $(OUTPUT_FOLDER)/$(DISK_NAME).bin 64M
 
 # ============================================================
 #   Compilation Rules
@@ -111,6 +116,7 @@ user-shell:
 apps: app-hello
 apps: app-clock
 apps: app-snake
+apps: app-ascii-video
 
 app-hello:
 	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0_ret.s -o crt0_ret.o
@@ -141,6 +147,15 @@ app-snake:
 	@echo Linking external app: snake
 	@rm -f crt0_ret.o app-snake.o string.o
 
+app-ascii-video:
+	@$(ASM) $(AFLAGS) $(SOURCE_FOLDER)/crt0_ret.s -o crt0_ret.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/app/ascii_video.c -o app-ascii-video.o
+	@$(CC)  $(CFLAGS) -fno-pie $(SOURCE_FOLDER)/stdlib/string.c -o string.o
+	@$(LIN) -T $(APP_LINKER) -melf_i386 --oformat=binary \
+		crt0_ret.o app-ascii-video.o string.o -o $(OUTPUT_FOLDER)/bad-apple
+	@echo Linking external app: bad-apple
+	@rm -f crt0_ret.o app-ascii-video.o string.o
+
 
 insert-shell: inserter user-shell
 	@echo Inserting shell into root directory...
@@ -151,11 +166,24 @@ insert-apps: inserter apps
 	@cd $(OUTPUT_FOLDER); ./inserter hello 1 $(DISK_NAME).bin
 	@cd $(OUTPUT_FOLDER); ./inserter clock 1 $(DISK_NAME).bin
 	@cd $(OUTPUT_FOLDER); ./inserter snake 1 $(DISK_NAME).bin
+	@cd $(OUTPUT_FOLDER); ./inserter bad-apple 1 $(DISK_NAME).bin
 
 insert-clock: inserter app-clock
 	@echo Inserting clock into root directory...
 	@cd $(OUTPUT_FOLDER); ./inserter clock 1 $(DISK_NAME).bin
 
-megumos: build inserter insert-shell insert-apps
+insert-badapple: inserter
+	@echo Inserting badapple chunk files into root directory...
+	@for f in $(OUTPUT_FOLDER)/badapple_*.avf; do \
+		if [ -e $$f ]; then \
+			echo "Inserting $$(basename $$f)..."; \
+			( cd $(OUTPUT_FOLDER) && ./inserter $$(basename $$f) 1 $(DISK_NAME).bin ); \
+		fi; \
+	done
+
+megumos: clean disk build inserter insert-shell insert-apps
+	@echo "Converting Bad Apple video to ASCII frames..."
+	@python3 tools/pack_ascii_video.py "tools/bad apple.mp4"
+	@$(MAKE) insert-badapple
 	@echo === MEGUMOS COMPLETE ===
-	@echo Shell and all apps inserted!
+	@echo "Run 'make run' to start the OS"

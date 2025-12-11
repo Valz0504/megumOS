@@ -40,6 +40,40 @@ void framebuffer_clear_color(uint8_t color) {
     swap_buffer();
 }
 
+void framebuffer_draw_text_frame_color(const char *buf, uint8_t width, uint8_t height, uint8_t color) {
+    if (buf == NULL) return;
+    if (width > FB_COLS) width = FB_COLS;
+    if (height > FB_ROWS) height = FB_ROWS;
+
+    // Draw provided frame
+    for (uint8_t y = 0; y < height; ++y) {
+        const char *row = buf + (uint32_t)y * width;
+        uint8_t x = 0;
+        for (; x < width; ++x) {
+            graphics_write_char(x, y, row[x], color);
+        }
+        for (; x < FB_COLS; ++x) {
+            graphics_write_char(x, y, ' ', color);
+        }
+    }
+
+    // Clear remaining rows if the frame height is shorter than the screen
+    for (uint8_t y = height; y < FB_ROWS; ++y) {
+        for (uint8_t x = 0; x < FB_COLS; ++x) {
+            graphics_write_char(x, y, ' ', color);
+        }
+    }
+
+    cursor_row = 0;
+    cursor_col = 0;
+    graphics_set_cursor(0, 0);
+    swap_buffer();
+}
+
+void framebuffer_draw_text_frame(const char *buf, uint8_t width, uint8_t height) {
+    framebuffer_draw_text_frame_color(buf, width, height, DEFAULT_COLOR_FG);
+}
+
 void enable_cursor(void) {
     draw_cursor();
     swap_buffer();
