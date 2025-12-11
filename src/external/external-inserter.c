@@ -101,7 +101,6 @@ int main(int argc, char *argv[]) {
     if (argc >= 5) {
         char *folder_name = argv[4];
         
-        // First, try to create the folder (will fail if exists, which is OK)
         printf("Ensuring folder exists: %s\n", folder_name);
         int ret = create_directory(folder_name, parent_inode);
         if (ret == 0) {
@@ -113,7 +112,6 @@ int main(int argc, char *argv[]) {
         }
         
         // Use inode 2 for badapple folder (first folder after root)
-        // This is a simplified approach
         parent_inode = 2;
         printf("Using folder inode: %u\n", parent_inode);
     }

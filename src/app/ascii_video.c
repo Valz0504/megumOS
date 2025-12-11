@@ -45,7 +45,7 @@ static bool read_chunk(const char *name, uint32_t offset, uint32_t length, void 
             .buf = buf,
             .name = (char *)name,
             .name_len = (uint8_t)strlen(name),
-            .parent_inode = 1,  // root directory
+            .parent_inode = 1, 
             .buffer_size = length,
             .is_directory = false
         },
@@ -106,7 +106,7 @@ int main(void)
         uint32_t header_read = 0;
         if (!read_chunk(fname, 0, sizeof(header_buf), header_buf, &header_read) ||
             header_read < sizeof(header_buf)) {
-            break; // no more chunks
+            break; 
         }
 
         struct AsciiVideoHeader hdr;

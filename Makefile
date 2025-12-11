@@ -181,6 +181,9 @@ insert-badapple: inserter
 		fi; \
 	done
 
-megumos: build inserter insert-shell insert-apps
+megumos: clean disk build inserter insert-shell insert-apps
+	@echo "Converting Bad Apple video to ASCII frames..."
+	@python3 tools/pack_ascii_video.py "tools/bad apple.mp4"
+	@$(MAKE) insert-badapple
 	@echo === MEGUMOS COMPLETE ===
-	@echo Shell and all apps inserted!
+	@echo "Run 'make run' to start the OS"

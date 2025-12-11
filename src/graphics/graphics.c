@@ -228,7 +228,6 @@ void graphics_write_char(uint8_t x, uint8_t y, char c, uint8_t color)
         for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++)
         {
             graphics_set_pixel(blockStartX + dx, blockStartY + dy, background_pixel(blockStartX + dx, blockStartY + dy));
-            // graphics_set_pixel(blockStartX + dx, blockStartY + dy, DEFAULT_COLOR_BG);
         }
     }
 
@@ -359,7 +358,6 @@ void graphics_backspace()
         for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++)
         {
             graphics_set_pixel(startX + dx, startY + dy, background_pixel(startX + dx, startY + dy));
-            // graphics_set_pixel(startX + dx, startY + dy, DEFAULT_COLOR_BG);
         }
     }
 
@@ -394,7 +392,6 @@ void graphics_scroll()
                 for (uint8_t dy = 0; dy < BLOCK_HEIGHT; dy++)
                 {
                     graphics_set_pixel(startX + dx, startY + dy, background_pixel(startX + dx, startY + dy));
-                    // graphics_set_pixel(startX + dx, startY + dy, DEFAULT_COLOR_BG);
                 }
             }
         }
